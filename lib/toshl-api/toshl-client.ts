@@ -43,6 +43,7 @@ export interface ToshlClientConfig {
   baseURL?: string;
   timeout?: number;
   defaultPerPage?: number;
+  debug?: boolean;
 }
 
 export interface RateLimitStatus {
@@ -53,8 +54,10 @@ export interface RateLimitStatus {
 export class ToshlClient {
   private client: AxiosInstance;
   private rateLimitStatus: RateLimitStatus = { limit: 1000, remaining: 1000 };
+  private debug: boolean;
 
   constructor(config: ToshlClientConfig) {
+    this.debug = config.debug || false;
     this.client = axios.create({
       baseURL: config.baseURL || "https://api.toshl.com",
       timeout: config.timeout || 10000,
@@ -65,13 +68,87 @@ export class ToshlClient {
       },
     });
 
-    // Add response interceptor to track rate limiting
+    // Add request interceptor for debug logging
+    this.client.interceptors.request.use(
+      (request) => {
+        if (this.debug) {
+          console.log(
+            `[ToshlClient Request] ${request.method?.toUpperCase()} ${request.url}`
+          );
+          if (request.params) {
+            console.log(
+              `[ToshlClient Request] Params:`,
+              JSON.stringify(request.params, null, 2)
+            );
+          }
+          if (request.data) {
+            console.log(
+              `[ToshlClient Request] Data:`,
+              JSON.stringify(request.data, null, 2)
+            );
+          }
+          console.log(
+            `[ToshlClient Request] Headers:`,
+            JSON.stringify(request.headers, null, 2)
+          );
+        }
+        return request;
+      },
+      (error) => {
+        if (this.debug) {
+          console.error(`[ToshlClient Request Error]`, error);
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    // Add response interceptor for debug logging and rate limiting
     this.client.interceptors.response.use(
       (response) => {
+        if (this.debug) {
+          console.log(
+            `[ToshlClient Response] ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`
+          );
+          console.log(
+            `[ToshlClient Response] Headers:`,
+            JSON.stringify(response.headers, null, 2)
+          );
+          console.log(`[ToshlClient Response] Rate Limit:`, {
+            limit: response.headers["x-ratelimit-limit"],
+            remaining: response.headers["x-ratelimit-remaining"],
+          });
+          if (response.data) {
+            console.log(
+              `[ToshlClient Response] Data:`,
+              JSON.stringify(response.data, null, 2)
+            );
+          }
+        }
         this.updateRateLimitStatus(response);
         return response;
       },
       (error) => {
+        if (this.debug) {
+          if (error.response) {
+            console.error(
+              `[ToshlClient Response Error] ${error.response.status} ${error.config?.method?.toUpperCase()} ${error.config?.url}`
+            );
+            console.error(
+              `[ToshlClient Response Error] Data:`,
+              JSON.stringify(error.response.data, null, 2)
+            );
+            console.error(
+              `[ToshlClient Response Error] Headers:`,
+              JSON.stringify(error.response.headers, null, 2)
+            );
+          } else if (error.request) {
+            console.error(
+              `[ToshlClient Network Error] No response received for ${error.config?.method?.toUpperCase()} ${error.config?.url}`
+            );
+          } else {
+            console.error(`[ToshlClient Error]`, error.message);
+          }
+        }
         if (error.response) {
           this.updateRateLimitStatus(error.response);
         }
@@ -217,7 +294,7 @@ export class ToshlClient {
     page?: number;
     per_page?: number;
   }): Promise<PaginatedResponse<Account>> {
-    return this.listResource<Account>("/accounts");
+    return await this.listResource<Account>("/accounts", params);
   }
 
   async getAccount(id: string): Promise<Account> {

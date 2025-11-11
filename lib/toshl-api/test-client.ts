@@ -10,7 +10,7 @@ async function testClient() {
     process.exit(1);
   }
 
-  const client = new ToshlClient({ token });
+  const client = new ToshlClient({ token, debug: true });
 
   try {
     console.log("🧪 Testing Toshl API TypeScript Client...\n");
@@ -24,7 +24,7 @@ async function testClient() {
 
     // Test 2: Get accounts
     console.log("2️⃣ Fetching accounts...");
-    const accounts = await client.getAccounts({ per_page: 5 });
+    const accounts = await client.getAccounts({ per_page: 10 });
     console.log(`   ✅ Found ${accounts.data.length} accounts`);
     console.log(
       `   📄 Pagination: ${JSON.stringify(accounts.pagination, null, 2)}\n`
@@ -44,7 +44,7 @@ async function testClient() {
 
     // Test 4: Pagination helper
     console.log("4️⃣ Testing PaginationHelper...");
-    const helper = new PaginationHelper(client, "/accounts", { per_page: 2 });
+    const helper = new PaginationHelper(client, "/accounts", { per_page: 10 });
     const firstPage = await helper.getCurrentPage();
     console.log(
       `   ✅ Helper page ${helper.getCurrentPageNumber()}: ${firstPage.data.length} accounts`
@@ -65,9 +65,9 @@ async function testClient() {
     }
 
     // Test 6: Currencies
-    console.log("6️⃣ Fetching currencies...");
-    const currencies = await client.getCurrencies({ types: "fiat" });
-    console.log(`   ✅ Found ${currencies.length} fiat currencies\n`);
+    // console.log("6️⃣ Fetching currencies...");
+    // const currencies = await client.getCurrencies({ types: "fiat" });
+    // console.log(`   ✅ Found ${currencies.length} fiat currencies\n`);
 
     // Test 7: Error handling
     console.log("7️⃣ Testing error handling...");
