@@ -1,0 +1,291 @@
+{
+  "javaType": "com.toshl.api.rest.model.Category",
+  "id": "https://api.toshl.com/schema/category#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "extends": {
+    "$ref": "item.json"
+  },
+  "title": "Categories",
+  "description": "Categories endpoint can be used to interact with [users](/docs/me) categories.",
+  "properties": {
+    "id": {
+      "type": "string",
+      "title": "Category id",
+      "description": "Category id.",
+      "readonly": true
+    },
+    "name": {
+      "type": "string",
+      "title": "Category name",
+      "description": "Category name.",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "name_override": {
+      "type": "boolean",
+      "title": "Name override",
+      "description": "Is true if name is overriden with a custom name.",
+      "default": false,
+      "deprecated": true
+    },
+    "modified": {
+      "type": "string",
+      "title": "Last modified",
+      "description": "Specifies when the category was last modified.",
+      "readonly": true
+    },
+    "type": {
+      "type": "string",
+      "title": "Category type",
+      "description": "Category type.",
+      "enum": ["expense", "income", "system"]
+    },
+    "deleted": {
+      "type": "boolean",
+      "title": "Deleted",
+      "description": "Is object deleted.",
+      "readonly": true
+    },
+    "counts": {
+      "javaType": "com.toshl.api.rest.model.CategoryCounts",
+      "type": "object",
+      "title": "Counts",
+      "description": "Category usage stats.",
+      "properties": {
+        "entries": {
+          "type": "integer",
+          "title": "Entry count",
+          "description": "Number of entries with category.",
+          "readonly": true
+        },
+        "income_entries": {
+          "type": "integer",
+          "title": "Entry count",
+          "description": "Number of income entries with category. Given only for unsorted category.",
+          "readonly": true
+        },
+        "expense_entries": {
+          "type": "integer",
+          "title": "Entry count",
+          "description": "Number of expense entries with category. Given only for unsorted category.",
+          "readonly": true
+        },
+        "tags_used_with_category": {
+          "type": "integer",
+          "title": "Tag count",
+          "description": "Number of tags used with category.",
+          "readonly": true
+        },
+        "income_tags_used_with_category": {
+          "type": "integer",
+          "title": "Tag count",
+          "description": "Number of income tags used with category. Given only for unsorted category.",
+          "readonly": true
+        },
+        "expense_tags_used_with_category": {
+          "type": "integer",
+          "title": "Tag count",
+          "description": "Number of expense tags used with category. Given only for unsorted category.",
+          "readonly": true
+        },
+        "tags": {
+          "type": "integer",
+          "title": "Tag count",
+          "description": "Number of tags used with category.",
+          "readonly": true
+        },
+        "income_tags": {
+          "type": "integer",
+          "title": "Tag count",
+          "description": "Number of income tags used with category. Given only for unsorted category.",
+          "readonly": true
+        },
+        "expense_tags": {
+          "type": "integer",
+          "title": "Tag count",
+          "description": "Number of expense tags used with category. Given only for unsorted category.",
+          "readonly": true
+        },
+        "budgets": {
+          "type": "integer",
+          "title": "Budget Count",
+          "description": "Number of budgets with category.",
+          "readonly": true
+        }
+      }
+    },
+    "extra": {
+      "javaType": "com.toshl.api.rest.model.Extra",
+      "type": "object",
+      "title": "Extra",
+      "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "/categories/{id}",
+      "title": "Get category",
+      "description": "Get a category.",
+      "scope": {
+        "anyOf": ["categories:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Category id",
+            "description": "Category id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "create",
+      "href": "/categories",
+      "method": "POST",
+      "title": "Create category",
+      "description": "Create a new category. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["categories:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Category name",
+            "description": "Category name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "type": {
+            "type": "string",
+            "title": "Category type",
+            "description": "Category type.",
+            "enum": ["expense", "income"]
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "update",
+      "href": "/categories/{id}",
+      "method": "PUT",
+      "title": "Update category",
+      "description": "Update a category. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["categories:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id", "name", "type", "modified"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Category id",
+            "description": "Category id."
+          },
+          "name": {
+            "type": "string",
+            "title": "Category name",
+            "description": "Category name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "name_override": {
+            "type": "boolean",
+            "title": "Name override",
+            "description": "Is true if name is overriden with a custom name.",
+            "default": false,
+            "deprecated": true
+          },
+          "modified": {
+            "type": "string",
+            "title": "Last modified",
+            "description": "Specifies when the category was last modified."
+          },
+          "type": {
+            "type": "string",
+            "title": "Category type",
+            "description": "Category type.",
+            "enum": ["expense", "income"]
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "delete",
+      "href": "/categories/{id}",
+      "method": "DELETE",
+      "title": "Delete category",
+      "description": "Delete a category. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["categories:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Category id",
+            "description": "Category id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "entries",
+      "href": "/entries?categories={id}",
+      "description": "Get a list of entries with category."
+    },
+    {
+      "rel": "budgets",
+      "href": "/budgets?categories={id}",
+      "description": "Get a list of budgets with category."
+    },
+    {
+      "rel": "merge",
+      "href": "/categories/merge",
+      "title": "Merge categories",
+      "description": "Merge multiple categories into one. All entries and budgets with the selected categories will be updated. After merging the selected categories will be deleted. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["entries:rw", "categories:rw", "budgets:rw"]
+      },
+      "method": "POST",
+      "schema": {
+        "type": "object",
+        "required": ["categories", "category"],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "title": "Categories",
+            "description": "Category ids to merge."
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "Category id to merge selected categories into."
+          }
+        }
+      }
+    }
+  ]
+}

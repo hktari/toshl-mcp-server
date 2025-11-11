@@ -1,0 +1,771 @@
+{
+  "javaType": "com.toshl.api.rest.model.Account",
+  "id": "https://api.toshl.com/schema/account#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "extends": {
+    "$ref": "item.json"
+  },
+  "title": "Accounts",
+  "description": [
+    "Accounts endpoint can be used to interact with [users](/docs/me) accounts.",
+    "_Note:_ Be advised that accounts are subject to [free account limitation](/docs/free). If a user with a free account tries to add an account and goes over the alowed number of accounts, a 403 (Forbidden) [error](/docs/errors) will be returned and the account will be discarded."
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "title": "Account id.",
+      "description": "Account id.",
+      "readonly": true
+    },
+    "parent": {
+      "type": "string",
+      "title": "Account parent",
+      "description": "Parent account id."
+    },
+    "name": {
+      "type": "string",
+      "title": "Account name",
+      "description": "Account name.",
+      "maxLength": 100
+    },
+    "name_override": {
+      "type": "boolean",
+      "title": "Name override",
+      "description": "Is true if name is overriden with a custom name.",
+      "default": false,
+      "deprecated": true
+    },
+    "type": {
+      "type": "string",
+      "title": "Account type",
+      "description": "Account type",
+      "enum": ["custom", "depository", "credit_card", "loan", "mortgage", "brokerage", "investment", "savings", "other"]
+    },
+    "balance": {
+      "type": "number",
+      "title": "Account balance",
+      "description": "Account balance.",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "readonly": true
+    },
+    "initial_balance": {
+      "type": "number",
+      "title": "Account balance",
+      "description": "Account balance.",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "default": 0
+    },
+    "limit": {
+      "type": "number",
+      "title": "Account limit",
+      "description": "Account limit. If no limit is set null is returned",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "default": null
+    },
+    "currency": {
+      "javaType": "com.toshl.api.rest.model.Currency",
+      "type": "object",
+      "title": "Account currency",
+      "description": "Currency object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "title": "Currency",
+          "description": "Account currency code.",
+          "pattern": "[A-Z0-9_]{2,10}"
+        },
+        "rate": {
+          "type": "number",
+          "title": "Exchange rate",
+          "description": "Account exchange rate calculated according to users currency. If not set (and currency differs from main currency) the daily exchange rate should be used.",
+          "minimum": 0,
+          "exclusiveMinimum": true
+        },
+        "main_rate": {
+          "type": "number",
+          "title": "Exchange rate in main currency",
+          "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+          "readonly": true
+        },
+        "fixed": {
+          "type": "boolean",
+          "default": "false",
+          "title": "Fixed exchange rate",
+          "description": "If set to true, the exchange rate is fixed."
+        }
+      }
+    },
+    "daily_sum_median": {
+      "javaType": "com.toshl.api.rest.model.AccountMedian",
+      "type": "object",
+      "title": "Median",
+      "description": "Calculated median of daily sums of expenses and incomes.",
+      "properties": {
+        "expenses": {
+          "type": "number",
+          "title": "Daily expenses sum median",
+          "description": "Median of daily sums of expenses.",
+          "minimum": 0,
+          "maximum": 1000000000000000,
+          "exclusiveMaximum": true,
+          "default": 0,
+          "readonly": true
+        },
+        "incomes": {
+          "type": "number",
+          "title": "Daily income sum median",
+          "description": "Median of daily sums of incomes.",
+          "minimum": 0,
+          "maximum": 1000000000000000,
+          "exclusiveMaximum": true,
+          "default": 0,
+          "readonly": true
+        }
+      },
+      "readonly": true
+    },
+    "avg": {
+      "javaType": "com.toshl.api.rest.model.AccountAvg",
+      "type": "object",
+      "title": "Account average",
+      "description": "Account average",
+      "properties": {
+        "expenses": {
+          "type": "number",
+          "title": "Monthly expenses sum avg",
+          "description": "Monthly expense sum avg",
+          "minimum": 0,
+          "maximum": 1000000000000000,
+          "exclusiveMaximum": true,
+          "default": 0,
+          "readonly": true
+        },
+        "incomes": {
+          "type": "number",
+          "title": "Monthly income sum",
+          "description": "Monthly income sum",
+          "minimum": 0,
+          "maximum": 1000000000000000,
+          "exclusiveMaximum": true,
+          "default": 0,
+          "readonly": true
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "title": "Account status",
+      "description": "Account status.",
+      "enum": ["active", "inactive", "archived"],
+      "readonly": true
+    },
+    "order": {
+      "type": "integer",
+      "title": "Order",
+      "description": "Account order.",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "modified": {
+      "type": "string",
+      "title": "Last modified",
+      "description": "Specifies when the account was last modified.",
+      "readonly": true
+    },
+    "goal": {
+      "javaType": "com.toshl.api.rest.model.AccountGoal",
+      "type": "object",
+      "title": "Savings goal",
+      "description": "If account is a savings goal this includes a savings goal object.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "title": "Savings goal amount",
+          "description": "Desired amount to save.",
+          "minimum": 0,
+          "exclusiveMinimum": true,
+          "maximum": 1000000000000000,
+          "exclusiveMaximum": true
+        },
+        "start": {
+          "type": "string",
+          "title": "Goal start date",
+          "description": "Savings goal start date in `YYYY-MM-DD` format.",
+          "format": "date"
+        },
+        "end": {
+          "type": "string",
+          "title": "Goal end date",
+          "description": "Savings goal end date in `YYYY-MM-DD` format.",
+          "format": "date"
+        }
+      }
+    },
+    "connection": {
+      "javaType": "com.toshl.api.rest.model.AccountConnection",
+      "type": "object",
+      "title": "Account institution connection",
+      "description": "If account is connected to an institution connection (bank etc.) this object includes details about the connection",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Connection id",
+          "description": "Connection id"
+        },
+        "name": {
+          "type": "string",
+          "title": "Connection name",
+          "description": "Connection name"
+        },
+        "status": {
+          "type": "string",
+          "title": "Connection status",
+          "description": "Connection status. `connected` means all is well, `disconnected` means sync is disabled, `inactive` means pro is needed to reactivate, `error` means there is an error with the connection and a re-login is required.",
+          "enum": ["connected", "disconnected", "inactive", "error"]
+        },
+        "logo": {
+          "type": "string",
+          "title": "Institution logo",
+          "description": "Institution logo url if institution has a logo.",
+          "readonly": true
+        }
+      }
+    },
+    "settle": {
+      "javaType": "com.toshl.api.rest.model.AccountSettle",
+      "type": "object",
+      "title": "Account settle",
+      "description": "If account is set to automatically settle each month this object includes details about the settle day of the month.",
+      "properties": {
+        "byday": {
+          "type": "string",
+          "title": "By day",
+          "description": "A comma separated list of weekdays (`MO,TU..`). Each weekday can have be preceded by a positive or negative number (`1MO` - 1st monday of the month/year, `-1MO` - last monday of the month/year)."
+        },
+        "bymonthday": {
+          "type": "string",
+          "title": "By day of the month",
+          "description": "A comma separated list of month days (1-31). Each month day can have a plus(+) or minus(-) prefix."
+        },
+        "bysetpos": {
+          "type": "string",
+          "title": "By set position",
+          "description": "A comma separater list of the nth occurance within `bymonthday`."
+        }
+      }
+    },
+    "billing": {
+      "javaType": "com.toshl.api.rest.model.AccountBilling",
+      "type": "object",
+      "title": "Account billing",
+      "description": "If account is set to automatically settle each month this object includes details about the billing day of the month.",
+      "properties": {
+        "byday": {
+          "type": "string",
+          "title": "By day",
+          "description": "A comma separated list of weekdays (`MO,TU..`). Each weekday can have be preceded by a positive or negative number (`1MO` - 1st monday of the month/year, `-1MO` - last monday of the month/year)."
+        },
+        "bymonthday": {
+          "type": "string",
+          "title": "By day of the month",
+          "description": "A comma separated list of month days (1-31). Each month day can have a plus(+) or minus(-) prefix."
+        },
+        "bysetpos": {
+          "type": "string",
+          "title": "By set position",
+          "description": "A comma separater list of the nth occurance within `bymonthday`."
+        }
+      }
+    },
+    "count": {
+      "type": "integer",
+      "title": "Count",
+      "description": "Number of times the account has been used."
+    },
+    "review": {
+      "type": "integer",
+      "title": "Review",
+      "description": "Number of entries to review.",
+      "readonly": true
+    },
+    "deleted": {
+      "type": "boolean",
+      "title": "Deleted",
+      "description": "Is object deleted.",
+      "readonly": true
+    },
+    "recalculated": {
+      "type": "boolean",
+      "title": "Recalculated",
+      "description": "Is `true` if account balance has been calculated (if `false` try pulling again until `true`).",
+      "readonly": true
+    },
+    "extra": {
+      "javaType": "com.toshl.api.rest.model.Extra",
+      "type": "object",
+      "title": "Extra",
+      "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+    }
+  },
+  "links": [
+    {
+      "rel": "list",
+      "href": "/accounts",
+      "title": "List accounts",
+      "description": "Get all users accounts.",
+      "scope": {
+        "anyOf": ["accounts:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "page": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "description": "Page to display, used for [pagination](/docs#pagination)."
+          },
+          "per_page": {
+            "type": "integer",
+            "default": 200,
+            "minimum": 10,
+            "maximum": 500,
+            "description": "Number of resource objects to return."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Return all accounts that were modified since timestamp."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "inactive", "archived"],
+            "description": "Return only accounts with a specific status."
+          },
+          "include_deleted": {
+            "type": "boolean",
+            "description": "Include deleted accounts.",
+            "default": false
+          },
+          "ids": {
+            "type": "string",
+            "description": "A comma separated list of account ids to return."
+          }
+        }
+      }
+    },
+    {
+      "rel": "self",
+      "href": "/accounts/{id}",
+      "title": "Get account",
+      "description": "Get a specific account.",
+      "scope": {
+        "anyOf": ["accounts:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Account id",
+            "description": "Account id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "create",
+      "href": "/accounts",
+      "method": "POST",
+      "title": "Create account",
+      "description": "Create a new account. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["accounts:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["name", "currency"],
+        "properties": {
+          "parent": {
+            "type": "string",
+            "title": "Account parent",
+            "description": "Parent account id."
+          },
+          "name": {
+            "type": "string",
+            "title": "Account name",
+            "description": "Account name.",
+            "maxLength": 255
+          },
+          "type": {
+            "type": "string",
+            "title": "Account type",
+            "description": "Account type",
+            "enum": ["custom", "depository", "credit_card", "loan", "mortgage", "brokerage", "other"]
+          },
+          "initial_balance": {
+            "type": "number",
+            "title": "Account balance",
+            "description": "Account balance.",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true,
+            "default": 0
+          },
+          "currency": {
+            "javaType": "com.toshl.api.rest.model.Currency",
+            "type": "object",
+            "title": "Account currency",
+            "description": "Currency object",
+            "required": ["code"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "title": "Currency",
+                "description": "Account currency code.",
+                "pattern": "[A-Z0-9_]{2,10}"
+              },
+              "rate": {
+                "type": "number",
+                "title": "Exchange rate",
+                "description": "Account exchange rate calculated according to users currency. If not set (and currency differs from main currency) the daily exchange rate will be used.",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "main_rate": {
+                "type": "number",
+                "title": "Exchange rate in main currency",
+                "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                "readonly": true
+              },
+              "fixed": {
+                "type": "boolean",
+                "default": "false",
+                "title": "Fixed exchange rate",
+                "description": "If set to true, the exchange rate is fixed."
+              }
+            }
+          },
+          "goal": {
+            "type": "object",
+            "title": "Savings goal",
+            "description": "If account is a savings goal this includes a savings goal object.",
+            "required": ["amount", "start", "end"],
+            "properties": {
+              "amount": {
+                "type": "number",
+                "title": "Savings goal amount",
+                "description": "Desired amount to save.",
+                "minimum": 0,
+                "exclusiveMinimum": true,
+                "maximum": 1000000000000000,
+                "exclusiveMaximum": true
+              },
+              "start": {
+                "type": "string",
+                "title": "Goal start date",
+                "description": "Savings goal start date in `YYYY-MM-DD` format.",
+                "format": "date"
+              },
+              "end": {
+                "type": "string",
+                "title": "Goal end date",
+                "description": "Savings goal end date in `YYYY-MM-DD` format.",
+                "format": "date"
+              }
+            }
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "update",
+      "href": "/accounts/{id}",
+      "method": "PUT",
+      "title": "Update account",
+      "description": "Update an account. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["accounts:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id", "name", "currency", "modified"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Account id",
+            "description": "Account id."
+          },
+          "parent": {
+            "type": "string",
+            "title": "Account parent",
+            "description": "Parent account id."
+          },
+          "name": {
+            "type": "string",
+            "title": "Account name",
+            "description": "Account name.",
+            "maxLength": 255
+          },
+          "name_override": {
+            "type": "boolean",
+            "title": "Name override",
+            "description": "Is true if name is overriden with a custom name.",
+            "default": false,
+            "deprecated": true
+          },
+          "type": {
+            "type": "string",
+            "title": "Account type",
+            "description": "Account type",
+            "enum": ["custom", "depository", "credit_card", "loan", "mortgage", "brokerage", "other"]
+          },
+          "initial_balance": {
+            "type": "number",
+            "title": "Account balance",
+            "description": "Account balance.",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true,
+            "default": 0
+          },
+          "currency": {
+            "javaType": "com.toshl.api.rest.model.Currency",
+            "type": "object",
+            "title": "Account currency",
+            "description": "Currency object",
+            "required": ["code"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "title": "Currency",
+                "description": "Account currency code.",
+                "pattern": "[A-Z0-9_]{2,10}"
+              },
+              "rate": {
+                "type": "number",
+                "title": "Exchange rate",
+                "description": "Account exchange rate calculated according to users currency. If not set (and currency differs from main currency) the daily exchange rate will be used.",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "main_rate": {
+                "type": "number",
+                "title": "Exchange rate in main currency",
+                "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                "readonly": true
+              },
+              "fixed": {
+                "type": "boolean",
+                "default": "false",
+                "title": "Fixed exchange rate",
+                "description": "If set to true, the exchange rate is fixed."
+              }
+            }
+          },
+          "modified": {
+            "type": "string",
+            "title": "Last modified",
+            "description": "Specifies when the account was last modified."
+          },
+          "goal": {
+            "type": "object",
+            "title": "Savings goal",
+            "description": "If account is a savings goal this includes a savings goal object.",
+            "required": ["amount", "start", "end"],
+            "properties": {
+              "amount": {
+                "type": "number",
+                "title": "Savings goal amount",
+                "description": "Desired amount to save.",
+                "minimum": 0,
+                "exclusiveMinimum": true,
+                "maximum": 1000000000000000,
+                "exclusiveMaximum": true
+              },
+              "start": {
+                "type": "string",
+                "title": "Goal start date",
+                "description": "Savings goal start date in `YYYY-MM-DD` format.",
+                "format": "date"
+              },
+              "end": {
+                "type": "string",
+                "title": "Goal end date",
+                "description": "Savings goal end date in `YYYY-MM-DD` format.",
+                "format": "date"
+              }
+            }
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "delete",
+      "href": "/accounts/{id}",
+      "title": "Delete account",
+      "description": [
+        "Delete an account. Some related data is updated asynchronously.",
+        "If the account is the only account it cannot be deleted.",
+        "The entries are moved to default account",
+        "If account is the default one another account with the highest balance is selected to be default."
+      ],
+      "scope": {
+        "anyOf": ["accounts:rw"]
+      },
+      "method": "DELETE",
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Account id",
+            "description": "Account id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "force_delete",
+      "href": "/accounts/{id}/force_delete",
+      "title": "Force delete account",
+      "description": [
+        "Delete an account. Some related data is updated asynchronously.",
+        "If the account is the only account it cannot be deleted.",
+        "An additional POST form parameter `password` is required. Entries are deleted"
+      ],
+      "scope": {
+        "anyOf": ["accounts:rw"]
+      },
+      "method": "POST",
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Account id",
+            "description": "Account id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "move",
+      "href": "/accounts/{id}/move",
+      "title": "Move account",
+      "description": "Move an account to a new position in the list.",
+      "scope": {
+        "anyOf": ["accounts:rw"]
+      },
+      "method": "POST",
+      "schema": {
+        "type": "object",
+        "required": ["position"],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "description": "New account position.",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    {
+      "rel": "reorder",
+      "href": "/accounts/reorder",
+      "method": "POST",
+      "title": "Reorder accounts",
+      "description": "Reorder account list.",
+      "scope": {
+        "anyOf": ["accounts:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["order"],
+        "properties": {
+          "order": {
+            "type": "array",
+            "description": "An array of account ids based on new order."
+          }
+        }
+      }
+    },
+    {
+      "rel": "month",
+      "href": "/months?account={id}"
+    },
+    {
+      "rel": "entries",
+      "href": "/entries?account={id}"
+    },
+    {
+      "rel": "merge",
+      "href": "/accounts/merge",
+      "title": "Merge accounts",
+      "description": "Merge multiple accounts into one. All entries and budgets with the selected accounts will be updated. After merging the selected accounts will be deleted.",
+      "scope": {
+        "anyOf": ["entries:rw", "accounts:rw"]
+      },
+      "method": "POST",
+      "schema": {
+        "type": "object",
+        "required": ["accounts"],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "title": "Accounts",
+            "description": "Account ids to merge."
+          },
+          "account": {
+            "type": "string",
+            "title": "Account",
+            "description": "Account id to merge selected categories into. If `null` a new account with `title` is created."
+          },
+          "title": {
+            "type": "string",
+            "title": "New account title",
+            "description": "If `account` is `null` then `title` is used to name the newly created account."
+          },
+          "currency": {
+            "type": "string",
+            "title": "New account currency",
+            "description": "Currency of the newly created account. Ignored if `account` is an existing account."
+          },
+          "sync": {
+            "type": "array",
+            "title": "Sync accounts",
+            "description": "List of bank accounts that will remain in sync with the bank. If `null` the none will remain in sync."
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "javaType": "com.toshl.api.rest.model.CurrencyElement",
+  "id": "https://api.toshl.com/schema/currency#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "title": "Currencies",
+  "description": "Currencies endpoint can be used to fetch details about currencies the Toshl API supports. The response includes an `ETag` which you _should_ use to see if any of the currencies have changed since your last check. For daily exchange rates please use a service like the awesome [Open Exchange Rates](https://openexchangerates.org) which we already use in our apps.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Currency name",
+      "description": "Currency name.",
+      "readonly": true
+    },
+    "symbol": {
+      "type": "string",
+      "title": "Symbol",
+      "description": "Currency symbol",
+      "readonly": true
+    },
+    "precision": {
+      "type": "integer",
+      "title": "Precision",
+      "description": "Number of decimal places for currency.",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "modified": {
+      "type": "string",
+      "title": "Last modified",
+      "description": "Specifies when the currency was last modified.",
+      "readonly": true
+    },
+    "type": {
+      "type": "string",
+      "title": "Currency type",
+      "description": "Currency type.",
+      "enum": ["fiat", "commodity", "crypto", "deprecated"]
+    }
+  },
+  "links": [
+    {
+      "rel": "list",
+      "href": "/currencies",
+      "title": "List currencies",
+      "description": "Get all available currencies.",
+      "scope": {
+        "anyOf": ["entries:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "currencies": {
+            "type": "string",
+            "description": "A comma separated list of currencies to return."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Return all currencies that were modified since timestamp."
+          },
+          "types": {
+            "type": "string",
+            "enum": ["fiat", "commodity", "crypto", "deprecated"],
+            "description": "Return all currencies of a specific type."
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "javaType": "com.toshl.api.rest.model.Export",
+  "id": "https://api.toshl.com/schema/export#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "title": "Exports",
+  "description": "Export users data in the selected formats. Exports are generated asynchronously so clients need to either implement pooling and wait for an export status to change to `generated` or wait for notification that is sent when export generation is complete.",
+  "properties": {
+    "id": {
+      "type": "string",
+      "title": "Export id",
+      "description": "Export id.",
+      "readonly": true
+    },
+    "resources": {
+      "$ref": "export.resource.json"
+    },
+    "formats": {
+      "$ref": "export.format.json"
+    },
+    "filters": {
+      "$ref": "export.filters.json"
+    },
+    "from": {
+      "type": "string",
+      "format": "date",
+      "description": "Used to define date range, in YYYY-MM-DD format."
+    },
+    "to": {
+      "type": "string",
+      "format": "date",
+      "description": "Used to define date range, in YYYY-MM-DD format."
+    },
+    "created": {
+      "type": "string",
+      "title": "Date created",
+      "description": "Specifies when the export was created.",
+      "format": "date-time",
+      "readonly": true
+    },
+    "modified": {
+      "type": "string",
+      "title": "Last modified",
+      "description": "Specifies when the export was last modified.",
+      "readonly": true
+    },
+    "status": {
+      "type": "string",
+      "title": "Export status",
+      "description": "Export status.",
+      "enum": ["sending", "sent", "error", "generating", "generated"],
+      "readonly": true
+    },
+    "type": {
+      "type": "string",
+      "javaType": "com.toshl.api.rest.model.ExportType",
+      "title": "Export type",
+      "description": "Export type.",
+      "enum": ["export", "attachments", "user_data"]
+    },
+    "seen": {
+      "type": "boolean",
+      "title": "Seen",
+      "description": "Marked as `true` if user has already seen the export after it was generated. If not set to `true` the system will send out a push notification after export was generated (with a slight delay)."
+    },
+    "data": {
+      "type": "object",
+      "javaType": "com.toshl.api.rest.model.ExportData",
+      "title": "Export data",
+      "description": "Export data after file was uploaded to S3",
+      "readonly": true,
+      "properties": {
+        "path": {
+          "type": "string",
+          "title": "Export file path",
+          "description": "External export file path.",
+          "readonly": true
+        },
+        "valid_until": {
+          "type": "string",
+          "title": "Valid until",
+          "description": "Specifies how long the export file links will be valid.",
+          "format": "date-time",
+          "readonly": true
+        },
+        "filename": {
+          "type": "string",
+          "title": "Filename",
+          "description": "Filename",
+          "readonly": true
+        },
+        "filesize": {
+          "type": "number",
+          "title": "File size",
+          "description": "File size in bytes."
+        }
+      }
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "/exports/{id}",
+      "title": "Get export",
+      "description": "Get export details.",
+      "scope": {
+        "anyOf": ["entries:r", "budgets:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Export id",
+            "description": "Export id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "create",
+      "href": "/exports",
+      "method": "POST",
+      "title": "Create export",
+      "description": "Create a new export.",
+      "scope": {
+        "anyOf": ["entries:r", "budgets:r", "accounts:r", "categories:r", "tags:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "resources": {
+            "$ref": "export.resource.json"
+          },
+          "formats": {
+            "$ref": "export.format.json"
+          },
+          "filters": {
+            "$ref": "export.filters.json"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "description": "Used to define date range, in YYYY-MM-DD format."
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "description": "Used to define date range, in YYYY-MM-DD format."
+          },
+          "type": {
+            "type": "string",
+            "javaType": "com.toshl.api.rest.model.ExportType",
+            "title": "Export type",
+            "description": "Export type.",
+            "enum": ["export", "attachments", "user_data"]
+          },
+          "seen": {
+            "type": "boolean",
+            "title": "Seen",
+            "description": "Marked as `true` if user has already seen the export after it was generated. If not set to `true` the system will send out a push notification after export was generated (with a slight delay)."
+          }
+        }
+      }
+    },
+    {
+      "rel": "update",
+      "href": "/exports/{id}",
+      "method": "PUT",
+      "title": "Update export",
+      "description": "Update an export. Currently only `seen` can be updated, all other parameters are ignored. Make sure to send an up to date `modified`.",
+      "scope": {
+        "anyOf": ["entries:r", "budgets:r", "accounts:r", "categories:r", "tags:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["modified"],
+        "properties": {
+          "modified": {
+            "type": "string",
+            "title": "Last modified",
+            "description": "Specifies when the export was last modified.",
+            "readonly": true
+          },
+          "seen": {
+            "type": "boolean",
+            "title": "Seen",
+            "description": "Marked as `true` if user has already seen the export after it was generated. If not set to `true` the system will send out a push notification after export was generated (with a slight delay)."
+          }
+        }
+      }
+    }
+  ]
+}

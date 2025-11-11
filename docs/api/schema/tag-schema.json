@@ -1,0 +1,279 @@
+{
+  "javaType": "com.toshl.api.rest.model.Tag",
+  "id": "https://api.toshl.com/schema/tag#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "extends": {
+    "$ref": "item.json"
+  },
+  "title": "Tags",
+  "description": "Tags endpoint can be used to interact with [users](/docs/me) tags.",
+  "properties": {
+    "id": {
+      "type": "string",
+      "title": "Tag id",
+      "description": "Tag id.",
+      "readonly": true
+    },
+    "name": {
+      "type": "string",
+      "title": "Tag name",
+      "description": "Tag name.",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "name_override": {
+      "type": "boolean",
+      "title": "Name override",
+      "description": "Is true if name is overriden with a custom name.",
+      "default": false
+    },
+    "modified": {
+      "type": "string",
+      "title": "Last modified",
+      "description": "Specifies when the tag was last modified.",
+      "readonly": true
+    },
+    "type": {
+      "type": "string",
+      "title": "Tag type",
+      "description": "Tag type.",
+      "enum": ["expense", "income"]
+    },
+    "category": {
+      "type": "string",
+      "title": "Primary category",
+      "description": "Primary category id of the tag."
+    },
+    "counts": {
+      "javaType": "com.toshl.api.rest.model.TagCounts",
+      "type": "object",
+      "description": "Number of times the tag has been used on entries and budgets.",
+      "required": ["entries", "budgets"],
+      "readonly": true,
+      "properties": {
+        "entries": {
+          "type": "integer",
+          "title": "Entry Count",
+          "description": "Number of entries with tag.",
+          "readonly": true
+        },
+        "unsorted_entries": {
+          "type": "integer",
+          "title": "Unsorted Entry Count",
+          "description": "Number of entries with tag and unsorted category.",
+          "readonly": true
+        },
+        "budgets": {
+          "type": "integer",
+          "title": "Budget Count",
+          "description": "Number of budgets with tag.",
+          "readonly": true
+        }
+      }
+    },
+    "deleted": {
+      "type": "boolean",
+      "title": "Deleted",
+      "description": "Is object deleted.",
+      "readonly": true
+    },
+    "meta_tag": {
+      "type": "boolean",
+      "title": "Meta Tag",
+      "description": "Is object meta tag.",
+      "readonly": true
+    },
+    "extra": {
+      "javaType": "com.toshl.api.rest.model.Extra",
+      "type": "object",
+      "title": "Extra",
+      "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "/tags/{id}",
+      "title": "Get tag",
+      "description": "Get a tag.",
+      "scope": {
+        "anyOf": ["tags:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Tag id",
+            "description": "Tag id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "create",
+      "href": "/tags",
+      "method": "POST",
+      "title": "Create tag",
+      "description": "Create a new tag. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["tags:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Tag name",
+            "description": "Tag name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "type": {
+            "type": "string",
+            "title": "Tag type",
+            "description": "Tag type.",
+            "enum": ["expense", "income"]
+          },
+          "category": {
+            "type": "string",
+            "title": "Primary category",
+            "description": "Primary category id of the tag."
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "update",
+      "href": "/tags/{id}",
+      "method": "PUT",
+      "title": "Update tag",
+      "description": "Update a tag. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["tags:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id", "name", "type", "modified"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Tag id",
+            "description": "Tag id."
+          },
+          "name": {
+            "type": "string",
+            "title": "Tag name",
+            "description": "Tag name.",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "name_override": {
+            "type": "boolean",
+            "title": "Name override",
+            "description": "Is true if name is overriden with a custom name.",
+            "default": false
+          },
+          "modified": {
+            "type": "string",
+            "title": "Last modified",
+            "description": "Specifies when the tag was last modified."
+          },
+          "type": {
+            "type": "string",
+            "title": "Tag type",
+            "description": "Tag type.",
+            "enum": ["expense", "income"]
+          },
+          "category": {
+            "type": "string",
+            "title": "Primary category",
+            "description": "Primary category id of the tag."
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "delete",
+      "href": "/tags/{id}",
+      "method": "DELETE",
+      "title": "Delete tag",
+      "description": "Delete a tag. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["tags:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Tag id",
+            "description": "Tag id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "entries",
+      "href": "/entries?tags={id}",
+      "description": "Get a list of entries with tag."
+    },
+    {
+      "rel": "budgets",
+      "href": "/budgets?tags={id}",
+      "description": "Get a list of budgets with tag."
+    },
+    {
+      "rel": "merge",
+      "href": "/tags/merge",
+      "title": "Merge tags",
+      "description": "Merge multiple tags into one. All entries and budgets with selected tags will be updated. When merging `tags` must be set, but only one of the remainig parameters may be set. After merging the selected tags will be deleted. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["entries:rw", "tags:rw", "budgets:rw", "categories:rw", "accounts:rw"]
+      },
+      "method": "POST",
+      "schema": {
+        "type": "object",
+        "required": ["tags"],
+        "properties": {
+          "tags": {
+            "type": "array",
+            "title": "Tags",
+            "description": "Tag ids to merge."
+          },
+          "tag": {
+            "type": "string",
+            "title": "Tag",
+            "description": "Tag id to merge selected tags into."
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "Category id to merge selected tags into."
+          },
+          "account": {
+            "type": "string",
+            "title": "Account",
+            "description": "Account id to merge selected tags into."
+          }
+        }
+      }
+    }
+  ]
+}

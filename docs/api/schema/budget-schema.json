@@ -1,0 +1,833 @@
+{
+  "javaType": "com.toshl.api.rest.model.Budget",
+  "id": "https://api.toshl.com/schema/budget#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "extends": {
+    "$ref": "item.json"
+  },
+  "title": "Budgets",
+  "description": [
+    "Budgets endpoint can be used to interact with [users](/docs/me) budgets. Endpoint returns only active budgets (can also return deleted budgets if `include_deleted` is true). If a client does not know how to calculate a budgets history it can set `expand` to `true` and the API will do the work. For this to work well, please include `from` and `to` whenever possible.",
+    "_Note:_ Only one active monthly budget for all expenses can exist at any one time. If a user tries to add a second general monthly budget, a 403 (Forbidden) [error](/docs/errors) will be returned and the budget will be discarded.",
+    "_Note:_ Be advised that budgets are subject to [free account limitation](/docs/free). If a user with a free account tries to add a third budget, a 403 (Forbidden) [error](/docs/errors) will be returned and the budget will be discarded."
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "title": "Budget id",
+      "description": "Budget id.",
+      "readonly": true
+    },
+    "parent": {
+      "type": "string",
+      "title": "Parent",
+      "description": "Budget parent id.",
+      "readonly": true
+    },
+    "name": {
+      "type": "string",
+      "title": "Name",
+      "description": "Budget name.",
+      "maxLength": 300
+    },
+    "limit": {
+      "type": "number",
+      "title": "Limit",
+      "description": "Budget limit.",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true
+    },
+    "limit_planned": {
+      "type": "number",
+      "title": "Limit",
+      "description": "Planned budget limit is the limit based only on planned incomes.",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "readonly": true
+    },
+    "amount": {
+      "type": "number",
+      "title": "Amount",
+      "description": "Budget amount, always calculated into budget `currency`.",
+      "minimum": 0,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "readonly": true
+    },
+    "planned": {
+      "type": "number",
+      "title": "Planned amount",
+      "description": "Planned amount is the amount of expenses that will fall into the budget after today.",
+      "minimum": 0,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "readonly": true
+    },
+    "history_amount_median": {
+      "type": "number",
+      "title": "Median",
+      "description": "Budget history amount median.",
+      "minimum": 0,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "readonly": true
+    },
+    "currency": {
+      "javaType": "com.toshl.api.rest.model.Currency",
+      "type": "object",
+      "title": "Budget currency",
+      "description": "Currency object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "title": "Currency",
+          "description": "Budget currency code. Currency code is updatable only if all iterations are updated, or if budget is non repeating",
+          "pattern": "[A-Z0-9_]{2,10}"
+        },
+        "rate": {
+          "type": "number",
+          "title": "Exchange rate",
+          "description": "Budget exchange rate calculated according to users currency. If not set (and currency differs from main currency) the daily exchange rate will be used.",
+          "minimum": 0,
+          "exclusiveMinimum": true
+        },
+        "main_rate": {
+          "type": "number",
+          "title": "Exchange rate in main currency",
+          "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+          "readonly": true
+        },
+        "fixed": {
+          "type": "boolean",
+          "default": "false",
+          "title": "Fixed exchange rate",
+          "description": "If set to true, the exchange rate is not refreshed on next budget iteration."
+        }
+      }
+    },
+    "from": {
+      "type": "string",
+      "title": "From",
+      "description": "Budget start date.",
+      "format": "date",
+      "readonly": true
+    },
+    "to": {
+      "type": "string",
+      "title": "To",
+      "description": "Budget end date.",
+      "format": "date",
+      "readonly": true
+    },
+    "rollover": {
+      "type": "boolean",
+      "title": "Rollover",
+      "description": "Boolean which determines if rollover is enabled for budget. If rollover is enabled whatever is left of the budget `limit` is carried over to the next month.",
+      "default": false
+    },
+    "rollover_override": {
+      "type": "boolean",
+      "title": "Rollover override",
+      "description": "Is true if rollover is overriden with a custom amount (can be useful for smart clients).",
+      "default": false
+    },
+    "rollover_amount": {
+      "type": "number",
+      "title": "Rollover amount",
+      "description": "Budget rollover amount. If client updates this the rollovers from previous months are not transferred anymore.",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "default": 0
+    },
+    "rollover_amount_planned": {
+      "type": "number",
+      "title": "Planned rollover amount",
+      "description": "Planned budget rollover amount. It takes into account aonly planned expenses.",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true,
+      "default": 0,
+      "readonly": true
+    },
+    "modified": {
+      "type": "string",
+      "title": "Last modified",
+      "description": "Specifies when the budget was last modified.",
+      "readonly": true
+    },
+    "recurrence": {
+      "type": "object",
+      "title": "Recurrence",
+      "description": "Recurrence object.",
+      "properties": {
+        "frequency": {
+          "type": "string",
+          "title": "Frequency",
+          "description": "Budget frequency.",
+          "enum": ["one-time", "daily", "weekly", "monthly", "yearly"]
+        },
+        "interval": {
+          "type": "integer",
+          "title": "Interval",
+          "description": "Budget interval.",
+          "minimum": 1,
+          "maximum": 127
+        },
+        "start": {
+          "type": "string",
+          "title": "Start date",
+          "description": "Budget start date in `YYYY-MM-DD` format.",
+          "format": "date"
+        },
+        "end": {
+          "type": "string",
+          "title": "End date",
+          "description": "Budget end date in `YYYY-MM-DD` format.",
+          "format": "date"
+        },
+        "byday": {
+          "type": "string",
+          "title": "By day",
+          "description": "A weekday (`MO,TU..`). Each weekday can have be preceded by a positive or negative number (`1MO` - 1st monday of the month/year, `-1MO` - last monday of the month/year). Only one weekday can be set - a limitation due to the nature of budgets."
+        },
+        "bymonthday": {
+          "type": "string",
+          "title": "By day of the month",
+          "description": "A comma separated list of unique month days (1-31). Each month day can have a plus(+) prefix. Only one month day can be specified due to the nature of budgets. In the case of `bysetpos` being `-1`, the value can be `28,29,30,31` or `28,29,30`  or `28,29`"
+        },
+        "bysetpos": {
+          "type": "string",
+          "title": "By set position",
+          "description": "A comma separater list of the nth occurance within `bymonthday`. If you wish to set the budget to repeat on the last day of the month, set `frequency` to `monthly`, `bymonthday` to `28,29,30,31` and `bysetpos` to `-1`."
+        },
+        "iteration": {
+          "type": "integer",
+          "title": "Budget iteration",
+          "description": "Budget iteration number. First budget in iteration has `iteration=0`.",
+          "minimum": 0,
+          "readonly": true
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "description": "Budget status. Budget can have an inactive state if users pro account has expired.",
+      "enum": ["active", "inactive", "archived"],
+      "readonly": true
+    },
+    "type": {
+      "type": "string",
+      "title": "Type",
+      "description": "Budget type.",
+      "enum": ["regular", "delta", "percent"]
+    },
+    "percent": {
+      "type": "number",
+      "title": "Percent",
+      "description": "Percent of monthly income.",
+      "minimum": 0,
+      "exclusiveMinimum": true
+    },
+    "delta": {
+      "type": "number",
+      "title": "Delta",
+      "description": "Used to define monthly budget -/+ delta."
+    },
+    "order": {
+      "type": "integer",
+      "title": "Order",
+      "description": "Budget order.",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "tags": {
+      "type": "array",
+      "title": "Tags",
+      "description": "An `array` of tag ids included in budget.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "!tags": {
+      "type": "array",
+      "title": "Excluded tags",
+      "description": "An `array` of tag ids excluded from the budget.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "categories": {
+      "type": "array",
+      "title": "Categories",
+      "description": "An `array` of category ids included in budget.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "!categories": {
+      "type": "array",
+      "title": "Excluded categories",
+      "description": "An `array` of category ids excluded from the budget.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "title": "Accounts",
+      "description": "An `array` of account ids included in budget.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "!accounts": {
+      "type": "array",
+      "title": "Excluded accounts",
+      "description": "An `array` of account ids excluded from the budget.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deleted": {
+      "type": "boolean",
+      "title": "Deleted",
+      "description": "Is object deleted.",
+      "readonly": true
+    },
+    "recalculated": {
+      "type": "boolean",
+      "title": "Recalculated",
+      "description": "Is `true` if budget balance and rollovers have been calculated (if `false` try pulling again until `true`).",
+      "readonly": true
+    },
+    "extra": {
+      "javaType": "com.toshl.api.rest.model.Extra",
+      "type": "object",
+      "title": "Extra",
+      "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+    },
+    "problem": {
+      "javaType": "com.toshl.api.rest.model.BudgetProblem",
+      "type": "object",
+      "title": "Budget problem info",
+      "description": "Budget problem info object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Problem id",
+          "description": "Id of the problem."
+        },
+        "description": {
+          "type": "string",
+          "title": "Problem description",
+          "description": "Description of the problem."
+        },
+        "deleted_accounts": {
+          "type": "array",
+          "title": "Deleted accounts",
+          "description": "An `array` of ids of deleted accounts of the budget.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deleted_tags": {
+          "type": "array",
+          "title": "Deleted tags",
+          "description": "An `array` of ids of deleted tags of the budget.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deleted_categories": {
+          "type": "array",
+          "title": "Deleted categories",
+          "description": "An `array` of ids of deleted categories of the budget.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "/budgets/{id}",
+      "title": "Get budget",
+      "description": "Get budget details.",
+      "scope": {
+        "anyOf": ["budgets:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Budget id",
+            "description": "Budget id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "create",
+      "href": "/budgets",
+      "method": "POST",
+      "title": "Create budget",
+      "description": "Create a new budget. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["budgets:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["name", "limit", "currency", "start", "period", "frequency", "type"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Budget name.",
+            "maxLength": 255
+          },
+          "limit": {
+            "type": "number",
+            "title": "Limit",
+            "description": "Budget limit. If `type != regular` this field is read only.",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true
+          },
+          "currency": {
+            "javaType": "com.toshl.api.rest.model.Currency",
+            "type": "object",
+            "title": "Budget currency",
+            "description": "Currency object",
+            "required": ["code"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "title": "Currency",
+                "description": "Budget currency code.",
+                "pattern": "[A-Z0-9_]{2,10}"
+              },
+              "rate": {
+                "type": "number",
+                "title": "Exchange rate",
+                "description": "Budget exchange rate calculated according to users currency. If not set (and currency differs from main currency) the daily exchange rate will be used.",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "main_rate": {
+                "type": "number",
+                "title": "Exchange rate in main currency",
+                "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                "readonly": true
+              },
+              "fixed": {
+                "type": "boolean",
+                "default": "false",
+                "title": "Fixed exchange rate",
+                "description": "If set to true, the exchange rate is not refreshed on next budget iteration."
+              }
+            }
+          },
+          "rollover": {
+            "type": "boolean",
+            "title": "Rollover",
+            "description": "Boolean which determines if rollover is enabled for budget. If rollover is enabled whatever is left of the budget `limit` is carried over to the next month.",
+            "default": false
+          },
+          "rollover_override": {
+            "type": "boolean",
+            "title": "Rollover override",
+            "description": "Is true if rollover is overriden with a custom amount (can be useful for smart clients).",
+            "default": false
+          },
+          "rollover_amount": {
+            "type": "number",
+            "title": "Rollover amount",
+            "description": "Budget rollover amount. If client updates this the rollovers from previous months are not transferred anymore.",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true,
+            "default": 0
+          },
+          "recurrence": {
+            "type": "object",
+            "title": "Recurrence",
+            "description": "Recurrence object.",
+            "properties": {
+              "frequency": {
+                "type": "string",
+                "title": "Frequency",
+                "description": "Budget frequency.",
+                "enum": ["one-time", "daily", "weekly", "monthly", "yearly"]
+              },
+              "interval": {
+                "type": "integer",
+                "title": "Interval",
+                "description": "Budget interval.",
+                "minimum": 1,
+                "maximum": 127
+              },
+              "start": {
+                "type": "string",
+                "title": "Start date",
+                "description": "Budget start date in `YYYY-MM-DD` format.",
+                "format": "date"
+              },
+              "end": {
+                "type": "string",
+                "title": "End date",
+                "description": "Budget end date in `YYYY-MM-DD` format.",
+                "format": "date"
+              },
+              "byday": {
+                "type": "string",
+                "title": "By day",
+                "description": "A weekday (`MO,TU..`). Each weekday can have be preceded by a positive or negative number (`1MO` - 1st monday of the month/year, `-1MO` - last monday of the month/year). Only one weekday can be set - a limitation due to the nature of budgets."
+              },
+              "bymonthday": {
+                "type": "string",
+                "title": "By day of the month",
+                "description": "A comma separated list of month days (1-31). Each month day can have a plus(+) or minus(-) prefix. Only one month day can be specified due to the nature of budgets."
+              },
+              "bysetpos": {
+                "type": "string",
+                "title": "By set position",
+                "description": "A comma separater list of the nth occurance within `bymonthday`. If you wish to set the budget to repeat on the last day of the month, set `frequency` to `monthly`, `bymonthday` to `28,29,30,31` and `bysetpos` to `-1`."
+              }
+            }
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Budget type.",
+            "enum": ["regular", "delta", "percent"]
+          },
+          "percent": {
+            "type": "number",
+            "title": "Percent",
+            "description": "Percent of monthly income. If `type` is `percent` this field *must* be set or server will report an error.",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "delta": {
+            "type": "number",
+            "title": "Delta",
+            "description": "Used to define monthly budget -/+ delta. If `type` if `delta` this field *must* be set or server will report an error."
+          },
+          "tags": {
+            "type": "array",
+            "title": "Tags",
+            "description": "An `array` of tag ids included in budget."
+          },
+          "!tags": {
+            "type": "array",
+            "title": "Excluded tags",
+            "description": "An `array` of tag ids excluded from the budget."
+          },
+          "categories": {
+            "type": "array",
+            "title": "Categories",
+            "description": "An `array` of category ids included in budget."
+          },
+          "!categories": {
+            "type": "array",
+            "title": "Excluded categories",
+            "description": "An `array` of category ids excluded from the budget."
+          },
+          "accounts": {
+            "type": "array",
+            "title": "Accounts",
+            "description": "An `array` of account ids included in budget."
+          },
+          "!accounts": {
+            "type": "array",
+            "title": "Excluded accounts",
+            "description": "An `array` of account ids excluded from the budget."
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "update",
+      "href": "/budgets/{id}",
+      "method": "PUT",
+      "title": "Update budget",
+      "description": [
+        "Update a budget. Some related data is updated asynchronously. Clients can set an additional query parameter `update` which dictates which budgets to update. Possible values are:",
+        "|*all*|Updates are to effect all past and future budgets.|\n|*one*|Updates only the current budget.|\n|*tail*|Updates will be in effect from now on.|",
+        "If `update` parameter is not specified the default value is **all**.",
+        "_Note_: Certain circumstances will cause all changes made to past or future budgets to be lost."
+      ],
+      "scope": {
+        "anyOf": ["budgets:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id", "name", "limit", "currency", "start", "period", "frequency", "type", "modified"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Budget id",
+            "description": "Budget id."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Budget name.",
+            "maxLength": 255
+          },
+          "limit": {
+            "type": "number",
+            "title": "Limit",
+            "description": "Budget limit. If `type != regular` this field is read only.",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true
+          },
+          "currency": {
+            "javaType": "com.toshl.api.rest.model.Currency",
+            "type": "object",
+            "title": "Budget currency",
+            "description": "Currency object",
+            "required": ["code"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "title": "Currency",
+                "description": "Budget currency code.",
+                "pattern": "[A-Z0-9_]{2,10}"
+              },
+              "rate": {
+                "type": "number",
+                "title": "Exchange rate",
+                "description": "Budget exchange rate calculated according to users currency. If not set (and currency differs from main currency) the daily exchange rate will be used.",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "main_rate": {
+                "type": "number",
+                "title": "Exchange rate in main currency",
+                "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                "readonly": true
+              },
+              "fixed": {
+                "type": "boolean",
+                "default": "false",
+                "title": "Fixed exchange rate",
+                "description": "If set to true, the exchange rate is not refreshed on next budget iteration."
+              }
+            }
+          },
+          "rollover": {
+            "type": "boolean",
+            "title": "Rollover",
+            "description": "Boolean which determines if rollover is enabled for budget. If rollover is enabled whatever is left of the budget `limit` is carried over to the next month.",
+            "default": false
+          },
+          "rollover_amount": {
+            "type": "number",
+            "title": "Rollover amount",
+            "description": "Current budget rollover amount if rollover is `true`.",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true,
+            "default": 0
+          },
+          "rollover_override": {
+            "type": "boolean",
+            "title": "Rollover override",
+            "description": "Is true if rollover is overriden with a custom amount (can be useful for smart clients).",
+            "default": false
+          },
+          "modified": {
+            "type": "string",
+            "title": "Last modified",
+            "description": "Specifies when the budget was last modified."
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Budget type.",
+            "enum": ["regular", "delta", "percent"]
+          },
+          "percent": {
+            "type": "number",
+            "title": "Percent",
+            "description": "Percent of monthly income. If `type` is `percent` this field *must* be set or server will report an error.",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "delta": {
+            "type": "number",
+            "title": "Delta",
+            "description": "Used to define monthly budget -/+ delta. If `type` if `delta` this field *must* be set or server will report an error."
+          },
+          "tags": {
+            "type": "array",
+            "title": "Tags",
+            "description": "An `array` of tag ids included in budget."
+          },
+          "!tags": {
+            "type": "array",
+            "title": "Excluded tags",
+            "description": "An `array` of tag ids excluded from the budget."
+          },
+          "categories": {
+            "type": "array",
+            "title": "Categories",
+            "description": "An `array` of category ids included in budget."
+          },
+          "!categories": {
+            "type": "array",
+            "title": "Excluded categories",
+            "description": "An `array` of category ids excluded from the budget."
+          },
+          "accounts": {
+            "type": "array",
+            "title": "Accounts",
+            "description": "An `array` of account ids included in budget."
+          },
+          "!accounts": {
+            "type": "array",
+            "title": "Excluded accounts",
+            "description": "An `array` of account ids excluded from the budget."
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "delete",
+      "href": "/budgets/{id}",
+      "method": "DELETE",
+      "title": "Delete budget",
+      "description": "Delete a budget. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["budgets:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Budget id",
+            "description": "Budget id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "move",
+      "href": "/budgets/{id}/move",
+      "title": "Reorder budgets",
+      "description": "Move a budget to a new position in the list.",
+      "scope": {
+        "anyOf": ["budgets:rw"]
+      },
+      "method": "POST",
+      "schema": {
+        "type": "object",
+        "required": ["position"],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "description": "New budget position.",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    {
+      "rel": "reorder",
+      "href": "/budgets/reorder",
+      "method": "POST",
+      "title": "Reorder budgets",
+      "description": "Reorder budget list.",
+      "scope": {
+        "anyOf": ["budgets:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["order"],
+        "properties": {
+          "order": {
+            "type": "array",
+            "description": "An array of budget ids based on new order."
+          }
+        }
+      }
+    },
+    {
+      "rel": "history",
+      "href": "/budgets/{id}/history",
+      "description": "Get budget history.",
+      "schema": {
+        "type": "object",
+        "required": ["id","to"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Budget id",
+            "description": "Budget id."
+          },
+          "page": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "description": "Page to display, used for [pagination](/docs#pagination)."
+          },
+          "per_page": {
+            "type": "integer",
+            "default": 200,
+            "minimum": 10,
+            "maximum": 500,
+            "description": "Number of resource objects to return."
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "description": "Used to define date range, in YYYY-MM-DD format."
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "description": "Used to define date range, in YYYY-MM-DD format."
+          }
+        }
+      }
+    },
+    {
+      "rel": "entries",
+      "href": "/entries?from={from}&to={to}&type=expense",
+      "description": "Get expenses included in the budget."
+    }
+  ]
+}

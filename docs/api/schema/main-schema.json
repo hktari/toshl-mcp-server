@@ -1,0 +1,80 @@
+{
+  "javaType": "com.toshl.api.rest.model.Index",
+  "id": "https://api.toshl.com/schema/index#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "title": "Index",
+  "description": "A list of Toshl API endpoints",
+  "properties": {},
+  "links": [
+    {
+      "rel": "me",
+      "href": "/me",
+      "title": "Me",
+      "description": "Access currently logged in user details",
+      "scope": {
+        "anyOf": ["user:r"]
+      }
+    },
+    {
+      "rel": "accounts",
+      "href": "/accounts",
+      "title": "Accounts",
+      "description": "Access users accounts",
+      "scope": {
+        "anyOf": ["accounts:r"]
+      }
+    },
+    {
+      "rel": "entries",
+      "href": "/entries",
+      "title": "Entries",
+      "description": "Access users entries",
+      "scope": {
+        "anyOf": ["entries:r"]
+      }
+    },
+    {
+      "rel": "budgets",
+      "href": "/budgets",
+      "title": "Budgets",
+      "description": "Access users budgets",
+      "scope": {
+        "anyOf": ["budgets:r"]
+      }
+    },
+    {
+      "rel": "categories",
+      "href": "/categories",
+      "title": "Categories",
+      "description": "Access users categories",
+      "scope": {
+        "anyOf": ["categories:r"]
+      }
+    },
+    {
+      "rel": "tags",
+      "href": "/tags",
+      "title": "Tags",
+      "description": "Access users tags",
+      "scope": {
+        "anyOf": ["tags:r"]
+      }
+    },
+    {
+      "rel": "currencies",
+      "href": "/currencies",
+      "title": "Currencies",
+      "description": "Access available currencies"
+    },
+    {
+      "rel": "export",
+      "href": "/exports",
+      "title": "Exports",
+      "description": "Access users exports",
+      "scope": {
+        "anyOf": ["entries:r", "budgets:r"]
+      }
+    }
+  ]
+}

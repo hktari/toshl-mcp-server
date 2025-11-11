@@ -1,0 +1,1113 @@
+{
+  "javaType": "com.toshl.api.rest.model.Entry",
+  "id": "https://api.toshl.com/schema/entry#",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "extends": {
+    "$ref": "item.json"
+  },
+  "title": "Entries",
+  "description": [
+    "Entries endpoint can be used to interact with [users](/docs/me) expenses and incomes.",
+    "Expenses have a negative prefix, incomes don't have a prefix. Every entry is part of an [account](/docs/accounts), is in one [category](/docs/categories), _can_ have [tags](/docs/tags), _can_ be part of a repeat, _can_ be part of a transaction and _can_ include [images](/docs/entries/images).",
+    "An entry is repeating if it includes the `repeat` object. Repeat parameters `start`, `end`, `frequency`, `interval`, `count` and `byday` are used according to [RFC 5545 RRULE](http://tools.ietf.org/html/rfc5545#section-3.3.10).",
+    "A transaction is a transfer of funds from one account to the other. An entry is part of transaction if it includes the `transation` object.",
+    "If you try edit an entry that is part of a transaction, the server will automatically update the companion entry.",
+    "_Note:_ Be advised that only [pro accounts](/docs/free) can upload entry images. If a user with a free account tries to add an image, a 403 (Forbidden) [error](/docs/errors) will be returned and the image will be discarded."
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "title": "Entry id.",
+      "description": "Entry id.",
+      "readonly": true
+    },
+    "amount": {
+      "type": "number",
+      "title": "Amount",
+      "description": "Entry amount.",
+      "minimum": -1000000000000000,
+      "exclusiveMinimum": true,
+      "maximum": 1000000000000000,
+      "exclusiveMaximum": true
+    },
+    "currency": {
+      "javaType": "com.toshl.api.rest.model.Currency",
+      "type": "object",
+      "title": "Entry currency",
+      "description": "Currency object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "title": "Currency",
+          "description": "Entry currency code.",
+          "pattern": "[A-Z0-9_]{2,10}"
+        },
+        "rate": {
+          "type": "number",
+          "title": "Exchange rate",
+          "description": "Entry exchange rate calculated according to entry [account](/docs/accounts) currency.",
+          "minimum": 0,
+          "exclusiveMinimum": true
+        },
+        "main_rate": {
+          "type": "number",
+          "title": "Exchange rate in main currency",
+          "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+          "readonly": true
+        },
+        "fixed": {
+          "type": "boolean",
+          "default": "false",
+          "title": "Fixed exchange rate",
+          "description": "If set to true, the exchange rate is fixed."
+        }
+      }
+    },
+    "date": {
+      "type": "string",
+      "title": "Purchase date",
+      "description": "Entry purchase date in `YYYY-MM-DD` format.",
+      "format": "date"
+    },
+    "desc": {
+      "type": "string",
+      "title": "Description",
+      "description": "Entry description.",
+      "maxLength": 3072
+    },
+    "account": {
+      "type": "string",
+      "title": "Account",
+      "description": "Entry account id."
+    },
+    "category": {
+      "type": "string",
+      "title": "Category",
+      "description": "Entry category id."
+    },
+    "tags": {
+      "type": "array",
+      "title": "Tags",
+      "description": "An array of tag ids.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "location": {
+      "javaType": "com.toshl.api.rest.model.EntryLocation",
+      "type": "object",
+      "title": "Location",
+      "description": "Entry location object.",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Location id",
+          "description": "Location id. This is the internal Toshl id, not the Foursquare venue id. Not set if user did not select a location."
+        },
+        "venue_id": {
+          "type": "string",
+          "title": "Venue id",
+          "description": "Foursquare venue id. Not set if user did not select a location."
+        },
+        "latitude": {
+          "type": "number",
+          "title": "Latitude",
+          "description": "Location latitude."
+        },
+        "longitude": {
+          "type": "number",
+          "title": "Longitude",
+          "description": "Location longitude."
+        }
+      }
+    },
+    "created": {
+      "type": "string",
+      "title": "Date created",
+      "description": "Specifies when the entry was created.",
+      "format": "date-time",
+      "readonly": true
+    },
+    "modified": {
+      "type": "string",
+      "title": "Last modified",
+      "description": "Specifies when the entry was last modified.",
+      "readonly": true
+    },
+    "repeat": {
+      "$ref": "repeat.json"
+    },
+    "transaction": {
+      "javaType": "com.toshl.api.rest.model.EntryTransaction",
+      "type": "object",
+      "title": "Transaction",
+      "description": "A transaction object.",
+      "required": ["account", "currency"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Entry id",
+          "description": "Companion entry id."
+        },
+        "amount": {
+          "type": "number",
+          "title": "Transaction amount",
+          "description": "Transaction amount.",
+          "minimum": -1000000000000000,
+          "exclusiveMinimum": true,
+          "maximum": 1000000000000000,
+          "exclusiveMaximum": true
+        },
+        "account": {
+          "type": "string",
+          "title": "Transaction account",
+          "description": "Companion entry account."
+        },
+        "currency": {
+          "javaType": "com.toshl.api.rest.model.Currency",
+          "type": "object",
+          "title": "Entry currency",
+          "description": "Companion entry currency object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Currency",
+              "description": "Entry currency code.",
+              "pattern": "[A-Z0-9_]{2,10}"
+            },
+            "rate": {
+              "type": "number",
+              "title": "Exchange rate",
+              "description": "Entry exchange rate calculated according to entry [account](/docs/accounts) currency.",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "main_rate": {
+              "type": "number",
+              "title": "Exchange rate in main currency",
+              "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+              "readonly": true
+            },
+            "fixed": {
+              "type": "boolean",
+              "default": "false",
+              "title": "Fixed exchange rate",
+              "description": "If set to true, the exchange rate is fixed."
+            }
+          }
+        }
+      }
+    },
+    "images": {
+      "type": "array",
+      "title": "Images",
+      "description": "List of entry images. Each entry can have up to 4 images.",
+      "maxItems": 4,
+      "items": {
+        "javaType": "com.toshl.api.rest.model.EntryImage",
+        "type": "object",
+        "extends": {
+          "$ref": "item.json"
+        },
+        "additionalItems": false,
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Image id",
+            "description": "Image id."
+          },
+          "path": {
+            "type": "string",
+            "title": "Image path",
+            "description": "Path to image. Append `thumb.jpg` (width 640px) or `full.jpg` to path to get different variants of the image.",
+            "readonly": true
+          },
+          "filename": {
+            "type": "string",
+            "title": "Attachment file name.",
+            "description": "Name of the attachment file. Use it together with path to retrieve the attachment.",
+            "readonly": true
+          },
+          "type": {
+            "type": "string",
+            "title": "Attachment type.",
+            "description": "Attachment type can be either `image` or `pdf`.",
+            "readonly": true
+          },
+          "status": {
+            "type": "string",
+            "readonly": true,
+            "title": "Status",
+            "description": "Image status.",
+            "enum": ["new", "uploaded", "error", "deleting"]
+          }
+        }
+      }
+    },
+    "reminders": {
+      "type": "array",
+      "title": "Reminders",
+      "description": "List of entry reminders. Each entry can have up to 5 reminder. List is returned sorted by `period` and `number`.",
+      "maxItems": 5,
+      "items": {
+        "javaType": "com.toshl.api.rest.model.Reminder",
+        "type": "object",
+        "additionalItems": false,
+        "required": ["period", "number", "at"],
+        "properties": {
+          "period": {
+            "type": "string",
+            "description": "Reminder period",
+            "enum": ["day", "week", "month", "year"]
+          },
+          "number": {
+            "type": "integer",
+            "description": "The number of periods before entry date -> 2 weeks before date: `period = week`, `number = 2`",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "at": {
+            "type": "string",
+            "description": "Time of day for the reminder to fire in `HH:mm:ss` format.",
+            "format": "time"
+          }
+        }
+      }
+    },
+    "import": {
+      "javaType": "com.toshl.api.rest.model.EntryImport",
+      "type": "object",
+      "title": "Entry import",
+      "description": "If entry was imported via a bank import (file or bank sync) this object is returned.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Import id",
+          "description": "File import id"
+        },
+        "connection": {
+          "type": "string",
+          "title": "Connection id",
+          "description": "Bank connection id which is responsible for the entry import."
+        },
+        "memo": {
+          "type": "string",
+          "title": "Import memo",
+          "description": "Memo provided by import"
+        },
+        "payee": {
+          "type": "string",
+          "title": "Import payee",
+          "description": "Payee provided by import"
+        },
+        "pending": {
+          "type": "boolean",
+          "title":"Pending",
+          "description": "`true` if transaction is pending."
+        }
+      }
+    },
+    "review": {
+      "javaType": "com.toshl.api.rest.model.EntryReview",
+      "type": "object",
+      "title": "Entry review",
+      "description": "If entry is linked to a review (subject, match or resulting entry), this object is returned",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Review id",
+          "description": "Review id"
+        },
+        "type": {
+          "type": "string",
+          "javaType": "com.toshl.api.rest.model.ReviewType",
+          "enum": ["expense", "income", "transfer", "repeat"]
+        },
+        "completed": {
+          "type": "boolean",
+          "title": "Completed",
+          "description": "If review has already been completed."
+        }
+      }
+    },
+    "settle": {
+      "javaType": "com.toshl.api.rest.model.EntrySettle",
+      "type": "object",
+      "title": "Settle entry",
+      "description": "If this entry is part of the settle made automatically, then settle object is returned.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Settle account id",
+          "description": "Account id with settle"
+        }
+      }
+    },
+    "split": {
+      "javaType": "com.toshl.api.rest.model.EntrySplit",
+      "type": "object",
+      "title": "Entry split",
+      "description": "If entry was created by splitting up another, this object is returned.",
+      "properties": {
+        "parent": {
+          "type": "string",
+          "title": "Parent id",
+          "description": "Link to parent that was used to create this split entry."
+        },
+        "children": {
+          "type": "array",
+          "title": "Children",
+          "description": "Array of entry ids that have the same parent.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "completed": {
+      "type": "boolean",
+      "title": "Paid",
+      "description": "If an entry has a reminder, this field indicates if the bill has been paid or not. Once it has reminders for this entry no longer fire.",
+      "default": false
+    },
+    "deleted": {
+      "type": "boolean",
+      "title": "Deleted",
+      "description": "Is object deleted.",
+      "readonly": true
+    },
+    "extra": {
+      "javaType": "com.toshl.api.rest.model.Extra",
+      "type": "object",
+      "title": "Extra",
+      "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "/entries/{id}",
+      "title": "Get entry",
+      "description": "Get an entry.",
+      "scope": {
+        "anyOf": ["entries:r"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Entry id",
+            "description": "Entry id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "create",
+      "href": "/entries",
+      "method": "POST",
+      "title": "Create entry",
+      "description": "Create a new entry. Some related data is updated asynchronously.",
+      "scope": {
+        "anyOf": ["entries:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["amount", "currency", "date", "account", "category"],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "title": "Amount",
+            "description": "Entry amount",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true
+          },
+          "currency": {
+            "javaType": "com.toshl.api.rest.model.Currency",
+            "type": "object",
+            "title": "Entry currency",
+            "description": "Currency object",
+            "required": ["code"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "title": "Currency",
+                "description": "Entry currency code.",
+                "pattern": "[A-Z0-9_]{2,10}"
+              },
+              "rate": {
+                "type": "number",
+                "title": "Exchange rate",
+                "description": "Entry exchange rate calculated according to entry [account](/docs/accounts) currency.",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "main_rate": {
+                "type": "number",
+                "title": "Exchange rate in main currency",
+                "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                "readonly": true
+              },
+              "fixed": {
+                "type": "boolean",
+                "default": "false",
+                "title": "Fixed exchange rate",
+                "description": "If set to true, the exchange rate is fixed."
+              }
+            }
+          },
+          "date": {
+            "type": "string",
+            "title": "Purchase date",
+            "description": "Entry purchase date in `YYYY-MM-DD` format.",
+            "format": "date"
+          },
+          "desc": {
+            "type": "string",
+            "title": "Description",
+            "description": "Entry description.",
+            "maxLength": 255
+          },
+          "account": {
+            "type": "string",
+            "title": "Account",
+            "description": "Entry account id."
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "Entry category id."
+          },
+          "tags": {
+            "type": "array",
+            "title": "Tags",
+            "description": "An array of tag ids."
+          },
+          "location": {
+            "javaType": "com.toshl.api.rest.model.EntryLocation",
+            "type": "object",
+            "title": "Location",
+            "description": "Entry location object.",
+            "required": ["latitude", "longitude"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Location id",
+                "description": "Location id. This is the internal Toshl id, not the Foursquare venue id. Not set if user did not select a location."
+              },
+              "venue_id": {
+                "type": "string",
+                "title": "Venue id",
+                "description": "Foursquare venue id. Not set if user did not select a location."
+              },
+              "latitude": {
+                "type": "number",
+                "title": "Latitude",
+                "description": "Location latitude."
+              },
+              "longitude": {
+                "type": "number",
+                "title": "Longitude",
+                "description": "Location longitude."
+              }
+            }
+          },
+          "repeat": {
+            "javaType": "com.toshl.api.rest.model.EntryRepeat",
+            "type": "object",
+            "title": "Repeat object",
+            "description": "A repeat object.",
+            "required": ["start", "interval", "frequency"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Repeat id",
+                "description": "Repeat id."
+              },
+              "start": {
+                "type": "date",
+                "title": "Start date",
+                "description": "Repeat start date."
+              },
+              "end": {
+                "type": "date",
+                "title": "End date.",
+                "description": "Repeat end date. If end date is not specified the `end` parameter is omitted. `count` can be specified instead of `end`."
+              },
+              "frequency": {
+                "type": "string",
+                "title": "Repeat frequency",
+                "description": "Repeat frequency.",
+                "enum": ["daily", "weekly", "monthly", "yearly"]
+              },
+              "interval": {
+                "type": "integer",
+                "title": "Frequency",
+                "description": "Repeat interval. For example: repeating every two months -> frequency: `monthly`, interval: `2`.",
+                "minimum": 1,
+                "maximum": 127
+              },
+              "count": {
+                "type": "integer",
+                "title": "Count",
+                "description": "How many times to repeat entry.",
+                "minimum": 1
+              },
+              "byday": {
+                "type": "string",
+                "title": "By day",
+                "description": "A comma separated list of weekdays (`MO,TU..`). Each weekday can have be preceded by a positive or negative number (`1MO` - 1st monday of the month/year, `-1MO` - last monday of the month/year)."
+              },
+              "bymonthday": {
+                "type": "string",
+                "title": "By day of the month",
+                "description": "A comma separated list of month days (1-31). Each month day can have a plus(+) or minus(-) prefix."
+              },
+              "bysetpos": {
+                "type": "string",
+                "title": "By set position",
+                "description": "A comma separater list of the nth occurance within `bymonthday`. If you wish to set a repeat to occur on the last day of the month, set `frequency` to `monthly`, `bymonthday` to `28,29,30,31` and `bysetpos` to `-1`."
+              },
+              "iteration": {
+                "type": "number",
+                "title": "Iteration number",
+                "description": "Repeat iteration number. First entry in the repeat has `iteration=0`.",
+                "minimum": 0
+              }
+            }
+          },
+          "transaction": {
+            "javaType": "com.toshl.api.rest.model.EntryTransaction",
+            "type": "object",
+            "title": "Transaction",
+            "description": "A transaction object.",
+            "required": ["account", "currency"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Entry id",
+                "description": "Companion entry id."
+              },
+              "account": {
+                "type": "string",
+                "title": "Transaction account",
+                "description": "Companion entry account."
+              },
+              "currency": {
+                "javaType": "com.toshl.api.rest.model.Currency",
+                "type": "object",
+                "title": "Entry currency",
+                "description": "Companion entry currency object",
+                "required": ["code"],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "title": "Currency",
+                    "description": "Entry currency code.",
+                    "pattern": "[A-Z0-9_]{2,10}"
+                  },
+                  "rate": {
+                    "type": "number",
+                    "title": "Exchange rate",
+                    "description": "Entry exchange rate calculated according to entry [account](/docs/accounts) currency.",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "main_rate": {
+                    "type": "number",
+                    "title": "Exchange rate in main currency",
+                    "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                    "readonly": true
+                  },
+                  "fixed": {
+                    "type": "boolean",
+                    "default": "false",
+                    "title": "Fixed exchange rate",
+                    "description": "If set to true, the exchange rate is fixed."
+                  }
+                }
+              }
+            }
+          },
+          "images": {
+            "type": "array",
+            "title": "Images",
+            "description": "List of entry images. Each entry can have up to 4 images.",
+            "maxItems": 4,
+            "items": {
+              "javaType": "com.toshl.api.rest.model.EntryImage",
+              "type": "object",
+              "extends": {
+                "$ref": "item.json"
+              },
+              "additionalItems": false,
+              "required": ["id"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "title": "Image id",
+                  "description": "Image id."
+                }
+              }
+            }
+          },
+          "reminders": {
+            "type": "array",
+            "title": "Reminders",
+            "description": "List of entry reminders. Each entry can have up to 5 reminder.",
+            "maxItems": 5,
+            "items": {
+              "javaType": "com.toshl.api.rest.model.Reminder",
+              "type": "object",
+              "additionalItems": false,
+              "required": ["period", "number", "at"],
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "description": "Reminder period",
+                  "enum": ["day", "week", "month", "year"]
+                },
+                "number": {
+                  "type": "integer",
+                  "description": "The number of periods before entry date -> 2 weeks before date: `period = week`, `number = 2`",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "at": {
+                  "type": "string",
+                  "description": "Time of day for the reminder to fire in `HH:mm:ss` format.",
+                  "format": "time"
+                }
+              }
+            }
+          },
+          "split": {
+            "type": "object",
+            "title": "Entry split",
+            "description": "If entry was created by splitting up another, this object is returned.",
+            "required": ["parent"],
+            "properties": {
+              "parent": {
+                "type": "string",
+                "title": "Parent id",
+                "description": "Link to parent that was used to create this split entry."
+              }
+            }
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Paid",
+            "description": "If an entry has a reminder, this field indicates if the bill has been paid or not. Once it has reminders for this entry no longer fire.",
+            "default": false
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "update",
+      "href": "/entries/{id}",
+      "method": "PUT",
+      "title": "Update entry",
+      "description": [
+        "Update an entry. Some related data is updated asynchronously. If entry is part of a repeat clients can set an additional GET parameter `update` which dictates which entries in the repeat to update. Possible values are:",
+        "|*all*|Updates all entries in the repeat.|\n|*one*|Updates only the sent entry.|\n|*tail*|Updates the sent entry and all following.|",
+        "If `update` parameter is not specified the default value is *all*.",
+        "_Note_: When using the `update` parameter, all changes made on the entries will be lost.",
+        "If entry is part of a repeat clients can set an additional GET parameters `delete_after_date` or `delete_after_count` which dictates that entries in the repeat after specified date or specified count will be deleted."
+      ],
+      "scope": {
+        "anyOf": ["entries:rw"]
+      },
+      "schema": {
+        "type": "object",
+        "required": ["id" ,"amount", "currency", "date", "account", "category", "modified"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Entry id.",
+            "description": "Entry id."
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount",
+            "description": "Entry amount",
+            "minimum": -1000000000000000,
+            "exclusiveMinimum": true,
+            "maximum": 1000000000000000,
+            "exclusiveMaximum": true
+          },
+          "currency": {
+            "javaType": "com.toshl.api.rest.model.Currency",
+            "type": "object",
+            "title": "Entry currency",
+            "description": "Currency object",
+            "required": ["code"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "title": "Currency",
+                "description": "Entry currency code.",
+                "pattern": "[A-Z0-9_]{2,10}"
+              },
+              "rate": {
+                "type": "number",
+                "title": "Exchange rate",
+                "description": "Entry exchange rate calculated according to entry [account](/docs/accounts) currency.",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "main_rate": {
+                "type": "number",
+                "title": "Exchange rate in main currency",
+                "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                "readonly": true
+              },
+              "fixed": {
+                "type": "boolean",
+                "default": "false",
+                "title": "Fixed exchange rate",
+                "description": "If set to true, the exchange rate is fixed."
+              }
+            }
+          },
+          "date": {
+            "type": "string",
+            "title": "Purchase date",
+            "description": "Entry purchase date in `YYYY-MM-DD` format.",
+            "format": "date"
+          },
+          "desc": {
+            "type": "string",
+            "title": "Description",
+            "description": "Entry description.",
+            "maxLength": 255
+          },
+          "account": {
+            "type": "string",
+            "title": "Account",
+            "description": "Entry account id."
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "Entry category id."
+          },
+          "tags": {
+            "type": "array",
+            "title": "Tags",
+            "description": "An array of tag ids."
+          },
+          "location": {
+            "javaType": "com.toshl.api.rest.model.EntryLocation",
+            "type": "object",
+            "title": "Location",
+            "description": "Entry entry location object.",
+            "required": ["latitude", "longitude"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Location id",
+                "description": "Location id. This is the internal Toshl id, not the Foursquare venue id. Not set if user did not select a location."
+              },
+              "venue_id": {
+                "type": "string",
+                "title": "Venue id",
+                "description": "Foursquare venue id. Not set if user did not select a location."
+              },
+              "latitude": {
+                "type": "number",
+                "title": "Latitude",
+                "description": "Location latitude."
+              },
+              "longitude": {
+                "type": "number",
+                "title": "Longitude",
+                "description": "Location longitude."
+              }
+            }
+          },
+          "modified": {
+            "type": "string",
+            "title": "Last modified",
+            "description": "Specifies when the entry was last modified."
+          },
+          "repeat": {
+            "javaType": "com.toshl.api.rest.model.EntryRepeat",
+            "type": "object",
+            "title": "Repeat object",
+            "description": "A repeat object.",
+            "required": ["start", "interval", "frequency"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Repeat id",
+                "description": "Repeat id.",
+                "readonly": true
+              },
+              "start": {
+                "type": "date",
+                "title": "Start date",
+                "description": "Repeat start date.",
+                "readonly": true
+              },
+              "end": {
+                "type": "date",
+                "title": "End date.",
+                "description": "Repeat end date. If end date is not specified the `end` parameter is omitted. `count` can be specified instead of `end`.",
+                "readonly": true
+              },
+              "frequency": {
+                "type": "string",
+                "title": "Repeat frequency",
+                "description": "Repeat frequency.",
+                "enum": ["daily", "weekly", "monthly", "yearly"],
+                "readonly": true
+              },
+              "interval": {
+                "type": "integer",
+                "title": "Frequency",
+                "description": "Repeat interval. For example: repeating every two months -> frequency: `monthly`, interval: `2`.",
+                "minimum": 1,
+                "maximum": 127,
+                "readonly": true
+              },
+              "count": {
+                "type": "integer",
+                "title": "Count",
+                "description": "How many times to repeat entry.",
+                "minimum": 1,
+                "readonly": true
+              },
+              "byday": {
+                "type": "string",
+                "title": "By day",
+                "description": "A comma separated list of weekdays (`MO,TU..`). Each weekday can have be preceded by a positive or negative number (`1MO` - 1st monday of the month/year, `-1MO` - last monday of the month/year).",
+                "readonly": true
+              },
+              "bymonthday": {
+                "type": "string",
+                "title": "By day of the month",
+                "description": "A comma separated list of month days (1-31). Each month day can have a plus(+) or minus(-) prefix.",
+                "readonly": true
+              },
+              "iteration": {
+                "type": "number",
+                "title": "Iteration number",
+                "description": "Repeat iteration number. First entry in the repeat has `iteration=0`.",
+                "minimum": 0,
+                "readonly": true
+              }
+            }
+          },
+          "transaction": {
+            "javaType": "com.toshl.api.rest.model.EntryTransaction",
+            "type": "object",
+            "title": "Transaction",
+            "description": "A transaction object.",
+            "required": ["account", "currency"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Entry id",
+                "description": "Companion entry id."
+              },
+              "account": {
+                "type": "string",
+                "title": "Transaction account",
+                "description": "Companion entry account."
+              },
+              "currency": {
+                "javaType": "com.toshl.api.rest.model.Currency",
+                "type": "object",
+                "title": "Entry currency",
+                "description": "Companion entry currency object",
+                "required": ["code"],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "title": "Currency",
+                    "description": "Entry currency code.",
+                    "pattern": "[A-Z0-9_]{2,10}"
+                  },
+                  "rate": {
+                    "type": "number",
+                    "title": "Exchange rate",
+                    "description": "Entry exchange rate calculated according to entry [account](/docs/accounts) currency.",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "main_rate": {
+                    "type": "number",
+                    "title": "Exchange rate in main currency",
+                    "description": "Entry exchange rate main currency calculated according to entry [main](/docs/me) currency.",
+                    "readonly": true
+                  },
+                  "fixed": {
+                    "type": "boolean",
+                    "default": "false",
+                    "title": "Fixed exchange rate",
+                    "description": "If set to true, the exchange rate is fixed."
+                  }
+                }
+              }
+            }
+          },
+          "images": {
+            "type": "array",
+            "title": "Images",
+            "description": "List of entry images. Each entry can have up to 4 images.",
+            "maxItems": 4,
+            "items": {
+              "javaType": "com.toshl.api.rest.model.EntryImage",
+              "type": "object",
+              "extends": {
+                "$ref": "item.json"
+              },
+              "additionalItems": false,
+              "required": ["id"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "title": "Image id",
+                  "description": "Image id."
+                }
+              }
+            }
+          },
+          "reminders": {
+            "type": "array",
+            "title": "Reminders",
+            "description": "List of entry reminders. Each entry can have up to 5 reminder.",
+            "maxItems": 5,
+            "items": {
+              "javaType": "com.toshl.api.rest.model.Reminder",
+              "type": "object",
+              "additionalItems": false,
+              "required": ["period", "number", "at"],
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "description": "Reminder period",
+                  "enum": ["day", "week", "month", "year"]
+                },
+                "number": {
+                  "type": "integer",
+                  "description": "The number of periods before entry date -> 2 weeks before date: `period = week`, `number = 2`",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "at": {
+                  "type": "string",
+                  "description": "Time of day for the reminder to fire in `HH:mm:ss` format.",
+                  "format": "time"
+                }
+              }
+            }
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Paid",
+            "description": "If an entry has a reminder, this field indicates if the bill has been paid or not. Once it has reminders for this entry no longer fire.",
+            "default": false
+          },
+          "extra": {
+            "javaType": "com.toshl.api.rest.model.Extra",
+            "type": "object",
+            "title": "Extra",
+            "description": "A custom JSON object that you can use to extend Toshl API. Whatever you save into this field you will get back whenever you fetch it later."
+          }
+        }
+      }
+    },
+    {
+      "rel": "delete",
+      "href": "/entries/{id}",
+      "title": "Delete entry",
+      "description": [
+        "Delete an entry. Some related data is updated asynchronously. If entry is part of a repeat clients can set an additional GET parameter `delete` which dictates which entries in the repeat to delete. Possible values are:",
+        "|*all*|Deletes all entries in the repeat.|\n|*one*|Deletes only the sent entry.|\n|*tail*|Deletes the sent entry and all following.|",
+        "If `delete` parameter is not specified the default value is *all*."
+      ],
+      "scope": {
+        "anyOf": ["entries:rw"]
+      },
+      "method": "DELETE",
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Entry id",
+            "description": "Entry id."
+          }
+        }
+      }
+    },
+    {
+      "rel": "account",
+      "href": "/accounts/{account}",
+      "description": "Get linked account."
+    },
+    {
+      "rel": "category",
+      "href": "/categories/{category}",
+      "description": "Get linked category."
+    },
+    {
+      "rel": "tags",
+      "href": "/tags?ids={tags}",
+      "description": "Get a list of included tags."
+    },
+    {
+      "rel": "transaction_pair",
+      "href": "/entries/{transaction.id}",
+      "description": "Get the transaction companion."
+    },
+    {
+      "rel": "location",
+      "href": "/entries/locations/{location.id}",
+      "description": "Get entry location."
+    },
+    {
+      "rel": "manage",
+      "href": "/entries/manage",
+      "title": "Manage entries",
+      "description": "To manage entries in bulk first select which entries you want to manage by selecting `tags`, `accounts` or `categories` and then set the desired `tags`, `account` or `category`. You must set at least one `with` and one `set` property for this endpoint to work. See example for more info."
+    },
+    {
+      "rel": "split",
+      "href": "/entries/split/{id}",
+      "title": "Undo split",
+      "description": "Undo entry split. This recreates the original entry and deletes any children that were linked to parent.",
+      "scope": {
+        "anyOf": ["entries:rw"]
+      },
+      "method": "DELETE",
+      "schema": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Parent entry id",
+            "description": "Parent entry id."
+          }
+        }
+      }
+    }
+  ]
+}
