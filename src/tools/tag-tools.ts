@@ -31,6 +31,29 @@ export function setupTagTools() {
                 required: ['id'],
             },
         },
+        {
+            name: 'tag_create',
+            description: 'Create a new tag in Toshl Finance',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    name: {
+                        type: 'string',
+                        description: 'Tag name',
+                    },
+                    type: {
+                        type: 'string',
+                        description: 'Tag type',
+                        enum: ['expense', 'income'],
+                    },
+                    category: {
+                        type: 'string',
+                        description: 'Optional category ID to associate the tag with',
+                    },
+                },
+                required: ['name', 'type'],
+            },
+        },
     ];
 }
 
@@ -116,6 +139,69 @@ export async function handleTagGetTool(args: { id: string }) {
 }
 
 /**
+ * Handles the tag_create tool
+ * @param args Tool arguments
+ * @returns Tool response
+ */
+export async function handleTagCreateTool(args: { name: string; type: string; category?: string }) {
+    logger.debug('Handling tag_create tool', { args });
+
+    if (!args.name || !args.type) {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: 'Missing required parameters: name and type are required',
+                },
+            ],
+            isError: true,
+        };
+    }
+
+    if (args.type !== 'expense' && args.type !== 'income') {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Invalid parameter: type must be "expense" or "income", got "${args.type}"`,
+                },
+            ],
+            isError: true,
+        };
+    }
+
+    try {
+        const tagsClient = await createTagsClient();
+        const tag = await tagsClient.createTag({
+            name: args.name,
+            type: args.type,
+            ...(args.category ? { category: args.category } : {}),
+        });
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: JSON.stringify(tag, null, 2),
+                },
+            ],
+        };
+    } catch (error) {
+        logger.error('Error handling tag_create tool', { args, error });
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Error creating tag: ${(error as Error).message}`,
+                },
+            ],
+            isError: true,
+        };
+    }
+}
+
+/**
  * Handles tag tools
  * @param toolName Tool name
  * @param args Tool arguments
@@ -127,6 +213,8 @@ export async function handleTagTool(toolName: string, args: any) {
             return handleTagListTool();
         case 'tag_get':
             return handleTagGetTool(args as { id: string });
+        case 'tag_create':
+            return handleTagCreateTool(args as { name: string; type: string; category?: string });
         default:
             throw new McpError(
                 ErrorCode.MethodNotFound,
