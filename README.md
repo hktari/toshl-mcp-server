@@ -101,7 +101,7 @@ npm start
  "toshl-mcp-server": {
       "command": "node",
       "args": [
-        "/root/source/personal/toshl-mcp-server/dist/index.js"
+        "/root/source/personal/toshl-mcp-server/dist/src/index.js"
       ],
       "env": {
         "TOSHL_API_TOKEN": "your-token",
