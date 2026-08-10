@@ -11,21 +11,27 @@ Expect a first response within a week.
 
 ## Threat model
 
-This server holds a `TOSHL_API_TOKEN` — a bearer credential to someone's real bank
-accounts, transactions, and budgets — and runs unsandboxed on their machine. Its output
-is fed directly into an LLM's context, which may itself hold other credentials and tools.
+This server holds a `TOSHL_API_TOKEN` — a bearer credential to someone's complete financial
+picture: balances, every transaction, income, and budgets — and runs unsandboxed on their
+machine. Its output is fed directly into an LLM's context, which may itself hold other
+credentials and tools.
+
+Toshl's own access to the user's banks is read-only, so **no code in this repository can
+move money**. There is no payment path here. The exposure is data, plus the machine the
+server runs on.
 
 The consequences worth defending against, in order:
 
 1. **Token or financial data exfiltration** — the token or account data reaching any host
-   other than `api.toshl.com`.
+   other than `api.toshl.com`. The highest-severity class by a wide margin: it hands an
+   attacker a named individual's full financial history.
 2. **Code execution on the user's machine** — via an install lifecycle script, a
    compromised dependency, or dynamic evaluation at runtime.
 3. **Manipulation of the calling assistant** — instructions smuggled through MCP tool
    descriptions, resource descriptions, or returned data, steering the user's model into
    using *its* other tools on an attacker's behalf.
-4. **Unintended mutation of financial records** — this server exposes writing and deleting
-   tools, not only reads.
+4. **Destruction of financial records** — this server writes and deletes, not only reads.
+   It cannot cost the user money, but it can cost them bookkeeping they cannot recover.
 
 The security invariants that follow from this are listed in [`CLAUDE.md`](CLAUDE.md).
 
@@ -66,6 +72,7 @@ anyone who opens a PR. `ci.yml` is where PR code runs, and it must never gain a 
 - Rotate the token at <https://toshl.com/app/#/settings/apps> if it is ever pasted into a
   chat, a log, or an issue.
 - The tools named `entry_create`, `entry_update`, `entry_delete`,
-  `entry_convert_to_transfer`, and `entry_manage` **modify real financial records**. If
-  you only want the assistant to read your finances, restrict which tools it may call in
-  your MCP client's configuration.
+  `entry_convert_to_transfer`, and `entry_manage` **change your Toshl records**. They
+  cannot touch your bank — Toshl reads from it and never writes to it — but a deleted
+  entry is gone. If you want the assistant to only read your finances, restrict which
+  tools it may call in your MCP client's configuration.

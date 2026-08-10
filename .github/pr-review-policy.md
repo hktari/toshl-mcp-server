@@ -25,9 +25,23 @@ Two properties make this repo a higher-value target than its size suggests:
    assistant. Text placed there is an instruction channel to a model that may itself hold
    other credentials and tools. This is a prompt-injection surface, not just a data surface.
 
-The server is **not read-only**. It exposes mutating tools (`entry_create`, `entry_update`,
-`entry_delete`, `entry_convert_to_transfer`, `entry_manage`) backed by `POST`/`PUT`/`DELETE`
-in `src/api/toshl-client.ts`. Treat any *widening* of that mutation surface as significant.
+### What the token can and cannot do
+
+Getting this boundary right keeps your severities honest.
+
+**It cannot move money.** Toshl holds read-only access to the user's banks; it is a ledger
+over their accounts, not a payment rail. No change to this repository can initiate a
+transfer, a payment, or any transaction at a bank.
+
+**It can read everything.** Balances, complete transaction history, income, budgets — a
+full financial profile of a named individual. This is the crown jewel, and it is why
+§2.1 exfiltration findings outrank everything else here.
+
+**It can destroy records.** The server is not read-only: `entry_create`, `entry_update`,
+`entry_delete`, `entry_convert_to_transfer`, and `entry_manage` write to the user's Toshl
+ledger via `POST`/`PUT`/`DELETE` in `src/api/toshl-client.ts`. The harm is corrupted or
+deleted bookkeeping, which is often irrecoverable and always the user's own data — serious,
+but data integrity, not theft. Weigh it accordingly.
 
 Assume the PR author may be hostile and competent, and that the code will be run unsandboxed
 on other people's machines. Do not assume good faith from a friendly PR description.
@@ -112,9 +126,17 @@ tool and resource definition in the diff as if it were code.
 
 ### 2.5 Scope and authorization drift — HIGH
 
-- New tools or endpoints performing `POST`/`PUT`/`DELETE` — call these out explicitly even
-  when they look like a natural feature addition, and say what they can destroy.
-- Existing read-only tools gaining a mutating path.
+- New tools or endpoints performing `POST`/`PUT`/`DELETE`. **Always list every one of them**
+  in the Mutation surface section of your review, with what it can overwrite or delete, even
+  when it looks like an obvious and natural feature addition. The maintainer must see this
+  surface grow every single time; that visibility is not conditional on your judgement.
+  Severity is separate from visibility: writing is a supported capability of this project,
+  so a well-built write tool is reported at **Medium** rather than the High that this
+  section otherwise carries. Escalate it to High when it deletes without confirmation,
+  mutates more than its name implies, is reachable without the user explicitly asking for
+  it, or is described as read-only.
+- Existing read-only tools gaining a mutating path. This one *is* a finding: a caller who
+  chose `entry_list` did not consent to a write.
 - User-controlled values interpolated into API paths without encoding (`/entries/${id}`)
   enabling path traversal or endpoint pivoting.
 - Removal or weakening of input validation, or of `AuthProvider.isConfigured()` checks.
@@ -191,6 +213,9 @@ Structure it as:
   what the problem is, and the concrete consequence. Skip empty groups.
 - **Dependencies** — every added or bumped package with a one-line justification, or
   "No dependency changes."
+- **Mutation surface** — every added or changed tool or endpoint that writes or deletes,
+  with what it can overwrite or destroy, or "No change to the mutation surface." Always
+  present, independent of severity, so growth here is never invisible.
 - **Checked and clear** — one short line naming the §2 categories you actively verified and
   found clean. This tells the maintainer what your silence covers.
 
