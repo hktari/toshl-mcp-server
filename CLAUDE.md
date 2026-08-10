@@ -64,11 +64,22 @@ Breaking one is never a refactor detail — call it out explicitly in any change
    straight into the calling model's context. They describe; they never instruct the
    assistant, and they never carry hidden or invisible content.
 
-The server is **not read-only**: `entry_create`, `entry_update`, `entry_delete`,
-`entry_convert_to_transfer`, and `entry_manage` mutate live financial records via
-`POST`/`PUT`/`DELETE` in `toshl-client.ts`. Any change that widens that mutation surface
-deserves explicit discussion, and no tool description may claim to be read-only when it
-is not.
+### Blast radius
+
+Toshl holds **read-only** access to the user's banks, so nothing in this repository can move
+money — no transfer, no payment, no bank transaction. What the token reaches is the user's
+Toshl ledger.
+
+That makes **exfiltration the dominant risk**: the token exposes balances, complete
+transaction history, income, and budgets for a named individual. Invariants 1 and 2 above
+are the ones worth being paranoid about.
+
+The server is **not read-only** — `entry_create`, `entry_update`, `entry_delete`,
+`entry_convert_to_transfer`, and `entry_manage` write via `POST`/`PUT`/`DELETE` in
+`toshl-client.ts`. Writing is a supported, intended capability, and new write tools are
+ordinary feature work. The risk they carry is data integrity: destroying bookkeeping the
+user cannot recover. Build them so a destructive action is explicit, scoped to what its
+name implies, and never described as read-only.
 
 ## Contributions
 

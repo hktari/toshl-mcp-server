@@ -25,9 +25,23 @@ Two properties make this repo a higher-value target than its size suggests:
    assistant. Text placed there is an instruction channel to a model that may itself hold
    other credentials and tools. This is a prompt-injection surface, not just a data surface.
 
-The server is **not read-only**. It exposes mutating tools (`entry_create`, `entry_update`,
-`entry_delete`, `entry_convert_to_transfer`, `entry_manage`) backed by `POST`/`PUT`/`DELETE`
-in `src/api/toshl-client.ts`. Treat any *widening* of that mutation surface as significant.
+### What the token can and cannot do
+
+Getting this boundary right keeps your severities honest.
+
+**It cannot move money.** Toshl holds read-only access to the user's banks; it is a ledger
+over their accounts, not a payment rail. No change to this repository can initiate a
+transfer, a payment, or any transaction at a bank.
+
+**It can read everything.** Balances, complete transaction history, income, budgets — a
+full financial profile of a named individual. This is the crown jewel, and it is why
+§2.1 exfiltration findings outrank everything else here.
+
+**It can destroy records.** The server is not read-only: `entry_create`, `entry_update`,
+`entry_delete`, `entry_convert_to_transfer`, and `entry_manage` write to the user's Toshl
+ledger via `POST`/`PUT`/`DELETE` in `src/api/toshl-client.ts`. The harm is corrupted or
+deleted bookkeeping, which is often irrecoverable and always the user's own data — serious,
+but data integrity, not theft. Weigh it accordingly.
 
 Assume the PR author may be hostile and competent, and that the code will be run unsandboxed
 on other people's machines. Do not assume good faith from a friendly PR description.
@@ -112,9 +126,13 @@ tool and resource definition in the diff as if it were code.
 
 ### 2.5 Scope and authorization drift — HIGH
 
-- New tools or endpoints performing `POST`/`PUT`/`DELETE` — call these out explicitly even
-  when they look like a natural feature addition, and say what they can destroy.
-- Existing read-only tools gaining a mutating path.
+- New tools or endpoints performing `POST`/`PUT`/`DELETE`. Note them and say what data they
+  can overwrite or delete — but a well-built new write tool is a **feature**, not a finding.
+  This project already writes; adding `category_create` alongside `category_list` is normal
+  work. Report it as Important only if it deletes without confirmation, mutates more than
+  its name implies, is reachable without the user asking, or is described as read-only.
+- Existing read-only tools gaining a mutating path. This one *is* a finding: a caller who
+  chose `entry_list` did not consent to a write.
 - User-controlled values interpolated into API paths without encoding (`/entries/${id}`)
   enabling path traversal or endpoint pivoting.
 - Removal or weakening of input validation, or of `AuthProvider.isConfigured()` checks.
