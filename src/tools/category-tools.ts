@@ -31,6 +31,25 @@ export function setupCategoryTools() {
                 required: ['id'],
             },
         },
+        {
+            name: 'category_create',
+            description: 'Create a new category in Toshl Finance',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    name: {
+                        type: 'string',
+                        description: 'Category name',
+                    },
+                    type: {
+                        type: 'string',
+                        description: 'Category type',
+                        enum: ['expense', 'income'],
+                    },
+                },
+                required: ['name', 'type'],
+            },
+        },
     ];
 }
 
@@ -116,6 +135,68 @@ export async function handleCategoryGetTool(args: { id: string }) {
 }
 
 /**
+ * Handles the category_create tool
+ * @param args Tool arguments
+ * @returns Tool response
+ */
+export async function handleCategoryCreateTool(args: { name: string; type: string }) {
+    logger.debug('Handling category_create tool', { args });
+
+    if (!args.name || !args.type) {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: 'Missing required parameters: name and type are required',
+                },
+            ],
+            isError: true,
+        };
+    }
+
+    if (args.type !== 'expense' && args.type !== 'income') {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Invalid parameter: type must be "expense" or "income", got "${args.type}"`,
+                },
+            ],
+            isError: true,
+        };
+    }
+
+    try {
+        const categoriesClient = await createCategoriesClient();
+        const category = await categoriesClient.createCategory({
+            name: args.name,
+            type: args.type,
+        });
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: JSON.stringify(category, null, 2),
+                },
+            ],
+        };
+    } catch (error) {
+        logger.error('Error handling category_create tool', { args, error });
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Error creating category: ${(error as Error).message}`,
+                },
+            ],
+            isError: true,
+        };
+    }
+}
+
+/**
  * Handles category tools
  * @param toolName Tool name
  * @param args Tool arguments
@@ -127,6 +208,8 @@ export async function handleCategoryTool(toolName: string, args: any) {
             return handleCategoryListTool();
         case 'category_get':
             return handleCategoryGetTool(args as { id: string });
+        case 'category_create':
+            return handleCategoryCreateTool(args as { name: string; type: string });
         default:
             throw new McpError(
                 ErrorCode.MethodNotFound,
