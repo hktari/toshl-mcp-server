@@ -27,3 +27,13 @@ updates:
       production-dependencies:
         dependency-type: production
         update-types: [minor, patch]
+    ignore:
+      # dotenv 17 prints `◇ injected env (N) from .env` to STDOUT on load. This is a
+      # stdio MCP server: src/index.ts calls dotenv.config() before connecting, and the
+      # client parses stdout as JSON-RPC, so that banner breaks every client with
+      # `Unexpected token '◇'`. Same failure the winston transport had before #4.
+      #
+      # Taking dotenv 17 requires `dotenv.config({ quiet: true })` at the call site, so
+      # the bump cannot land on its own. Staying on 16 until someone makes that change.
+      - dependency-name: dotenv
+        update-types: [version-update:semver-major]
