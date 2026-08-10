@@ -9,11 +9,13 @@ out/
 *.tsbuildinfo
 
 # Environment variables
+# Deny every .env variant by default and allow back only the committed templates —
+# a `.env.old` holding a live token was committed once because the list below was
+# an allowlist of names nobody remembered to extend.
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+!.env.test.example
 
 # Logs
 logs

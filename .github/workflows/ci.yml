@@ -1,0 +1,70 @@
+name: CI
+
+# This is the ONLY workflow that executes pull request code, and it is deliberately
+# the least privileged one:
+#
+#   * `pull_request` (not `pull_request_target`), so on this public repo GitHub
+#     withholds every secret from fork-originated runs by design.
+#   * `permissions: contents: read` — the job's GITHUB_TOKEN cannot write anything.
+#   * `--ignore-scripts` on install, so a malicious or compromised dependency cannot
+#     run its lifecycle hooks on the runner.
+#
+# NEVER add a secret to this workflow. If a step here needs one, that step belongs in
+# a separate `pull_request_target` job that does not touch PR code.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build & test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ matrix.node }}
+
+      # --ignore-scripts blocks preinstall/install/postinstall/prepare hooks from every
+      # package in the tree. --frozen-lockfile makes the install fail rather than silently
+      # resolve to something yarn.lock does not pin.
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Build
+        run: yarn build
+
+      # Everything under tests/api/ is an INTEGRATION suite: it calls the live Toshl API
+      # with a real TOSHL_API_TOKEN and fails without one. Those tests can never run here.
+      # Supplying a token would mean handing a stranger's PR code a credential to the
+      # maintainer's actual bank data — the exact attack this repo is being hardened against.
+      # So CI's real gate is `yarn build` (full typecheck) plus the credential-free units.
+      # Making tests/api/ mock the HTTP layer would restore genuine coverage; see README.
+      - name: Test (credential-free suites)
+        run: yarn test --testPathIgnorePatterns "/node_modules/" "/tests/api/"
+
+      # `yarn lint` has no eslint config committed yet, so it cannot fail meaningfully.
+      # Left visible and non-blocking; drop continue-on-error once a config lands.
+      - name: Lint
+        run: yarn lint
+        continue-on-error: true

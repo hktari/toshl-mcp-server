@@ -39,6 +39,24 @@ export class CategoriesClient {
         const response = await this.client.get<ToshlCategory>(`/categories/${id}`);
         return response.data;
     }
+
+    /**
+     * Creates a new category
+     * @param category Category data (name and type)
+     * @returns The created category
+     */
+    async createCategory(category: Partial<ToshlCategory>): Promise<ToshlCategory> {
+        logger.debug('Creating category', { category });
+
+        const response = await this.client.post<ToshlCategory>('/categories', category);
+        const id = response.headers['location']?.split('/').pop();
+        if (!id) {
+            logger.debug('Response', response);
+            throw new Error('Invalid response. Expected location header to contain category ID');
+        }
+
+        return await this.getCategory(id);
+    }
 }
 
 /**
