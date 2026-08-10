@@ -1,0 +1,97 @@
+name: PR guard
+
+# Deterministic supply-chain, secret, and egress checks.
+#
+# This uses `pull_request_target` for a different reason than claude-review.yml does:
+# not for secrets, but so the checks themselves come from `master`. Under `pull_request`
+# the runner would check out the PR's own copy of pr-guard.mjs, and a hostile PR could
+# simply edit the script that is meant to catch it. Running from the base branch means
+# the guard a PR faces is always the one the maintainer wrote.
+#
+# The same rule as claude-review.yml applies: the PR's code is never checked out,
+# installed, built, or executed. The diff is fetched through the API and read as text.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  guard:
+    name: Pattern checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Check out base branch (trusted)
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      # Fetched as data through the API. Nothing here is written into the working tree
+      # as source, and nothing is executed.
+      - name: Fetch PR diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
+            -H "Accept: application/vnd.github.v3.diff" > pr.diff
+          echo "Diff size: $(wc -c < pr.diff) bytes"
+
+      - name: Run guard
+        id: guard
+        run: node .github/scripts/pr-guard.mjs pr.diff > guard-report.md
+        continue-on-error: true
+
+      - name: Publish result
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node .github/scripts/upsert-comment.mjs \
+            --pr "${{ github.event.pull_request.number }}" \
+            --marker '<!-- pr-guard -->' \
+            --body-file guard-report.md
+
+      # Deliberately after the comment step, so a blocking finding is always published
+      # before the job goes red.
+      - name: Fail on blocking findings
+        if: steps.guard.outcome == 'failure'
+        run: |
+          echo "::error::PR guard found blocking patterns. See the PR comment and the job summary."
+          exit 1
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Check out base branch (trusted)
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          persist-credentials: false
+
+      # Compares the dependency graph at base vs head through GitHub's API — it does not
+      # install anything. Flags known-vulnerable and newly added packages.
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          base-ref: ${{ github.event.pull_request.base.sha }}
+          head-ref: ${{ github.event.pull_request.head.sha }}
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          warn-only: false
