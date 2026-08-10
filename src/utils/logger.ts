@@ -1,4 +1,5 @@
 import winston from 'winston';
+import { redactSensitive } from './log-redact.js';
 
 /**
  * Sets up the logger for the application
@@ -10,6 +11,8 @@ export function setupLogger() {
     const logger = winston.createLogger({
         level: logLevel,
         format: winston.format.combine(
+            // First, so no transport can ever be handed an unredacted credential.
+            redactSensitive(),
             winston.format.timestamp(),
             winston.format.json()
         ),
