@@ -3,7 +3,10 @@ import { AxiosError } from 'axios';
 import winston from 'winston';
 import { sanitizeForLog, redactSensitive } from '../../src/utils/log-redact.js';
 
-const TOKEN = 'tosh1_SUPERSECRET_TOKEN_abcdef123456';
+// Deliberately shaped so it reads as a fixture rather than a credential: a realistic-looking
+// token here would trip the repo's secret scanner on every PR that touches this file, and
+// nothing in these tests depends on the value being plausible — only on it being distinctive.
+const TOKEN = 'example-not-a-real-token-0000000000';
 const BASIC = Buffer.from(`${TOKEN}:`).toString('base64');
 
 /**
