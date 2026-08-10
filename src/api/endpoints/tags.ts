@@ -39,6 +39,24 @@ export class TagsClient {
         const response = await this.client.get<ToshlTag>(`/tags/${id}`);
         return response.data;
     }
+
+    /**
+     * Creates a new tag
+     * @param tag Tag data (name, type and optional category)
+     * @returns The created tag
+     */
+    async createTag(tag: Partial<ToshlTag>): Promise<ToshlTag> {
+        logger.debug('Creating tag', { tag });
+
+        const response = await this.client.post<ToshlTag>('/tags', tag);
+        const id = response.headers['location']?.split('/').pop();
+        if (!id) {
+            logger.debug('Response', response);
+            throw new Error('Invalid response. Expected location header to contain tag ID');
+        }
+
+        return await this.getTag(id);
+    }
 }
 
 /**

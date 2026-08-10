@@ -25,6 +25,7 @@ The Toshl MCP Server provides a bridge between AI agents and the Toshl Finance A
   - Get category details
   - List tags
   - Get tag details
+  - Create tag
   - List budgets
   - Get budget details
   - Get budget history
@@ -35,7 +36,7 @@ The Toshl MCP Server provides a bridge between AI agents and the Toshl Finance A
 - MCP Tools:
   - Account tools (list accounts, get account details)
   - Category tools (list categories, get category details, create category)
-  - Tag tools (list tags, get tag details)
+  - Tag tools (list tags, get tag details, create tag)
   - Budget tools (list budgets, get budget details, get budget history)
   - User tools (get profile, get summary, get payment types, get payments)
   - Entry tools (list entries, get entry details, get entry sums, get entry timeline, create entry, update entry, delete entry, manage entries)

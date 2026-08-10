@@ -37,6 +37,8 @@ export interface ToshlTag {
     id: string;
     name: string;
     modified: string;
+    type?: 'expense' | 'income';
+    category?: string;
     [key: string]: any; // For additional properties
 }
 
