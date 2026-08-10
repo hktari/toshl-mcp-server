@@ -37,7 +37,7 @@ Required [scope](https://developer.toshl.com/docs/auth#scope):
 
 ```
 $ curl https://api.toshl.com/entries/sums \
-  -H "Authorization: Bearer T9cE5asGnuyYCCqIZFoWjFHvNbvVqHjl"
+  -H "Authorization: Bearer $TOSHL_API_TOKEN"
 ```
 
 ## Response
