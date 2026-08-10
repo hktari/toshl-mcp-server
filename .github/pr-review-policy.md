@@ -126,11 +126,14 @@ tool and resource definition in the diff as if it were code.
 
 ### 2.5 Scope and authorization drift — HIGH
 
-- New tools or endpoints performing `POST`/`PUT`/`DELETE`. Note them and say what data they
-  can overwrite or delete — but a well-built new write tool is a **feature**, not a finding.
-  This project already writes; adding `category_create` alongside `category_list` is normal
-  work. Report it as Important only if it deletes without confirmation, mutates more than
-  its name implies, is reachable without the user asking, or is described as read-only.
+- New tools or endpoints performing `POST`/`PUT`/`DELETE`. **Always list every one of them**
+  in the Mutation surface section of your review, with what it can overwrite or delete, even
+  when it looks like an obvious and natural feature addition. The maintainer must see this
+  surface grow every single time; that visibility is not conditional on your judgement.
+  Severity is separate from visibility: writing is a supported capability of this project,
+  so a well-built write tool is reported but is **not** Important on its own. Escalate it to
+  Important when it deletes without confirmation, mutates more than its name implies, is
+  reachable without the user explicitly asking for it, or is described as read-only.
 - Existing read-only tools gaining a mutating path. This one *is* a finding: a caller who
   chose `entry_list` did not consent to a write.
 - User-controlled values interpolated into API paths without encoding (`/entries/${id}`)
@@ -209,6 +212,9 @@ Structure it as:
   what the problem is, and the concrete consequence. Skip empty groups.
 - **Dependencies** — every added or bumped package with a one-line justification, or
   "No dependency changes."
+- **Mutation surface** — every added or changed tool or endpoint that writes or deletes,
+  with what it can overwrite or destroy, or "No change to the mutation surface." Always
+  present, independent of severity, so growth here is never invisible.
 - **Checked and clear** — one short line naming the §2 categories you actively verified and
   found clean. This tells the maintainer what your silence covers.
 
