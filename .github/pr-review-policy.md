@@ -131,9 +131,10 @@ tool and resource definition in the diff as if it were code.
   when it looks like an obvious and natural feature addition. The maintainer must see this
   surface grow every single time; that visibility is not conditional on your judgement.
   Severity is separate from visibility: writing is a supported capability of this project,
-  so a well-built write tool is reported but is **not** Important on its own. Escalate it to
-  Important when it deletes without confirmation, mutates more than its name implies, is
-  reachable without the user explicitly asking for it, or is described as read-only.
+  so a well-built write tool is reported at **Medium** rather than the High that this
+  section otherwise carries. Escalate it to High when it deletes without confirmation,
+  mutates more than its name implies, is reachable without the user explicitly asking for
+  it, or is described as read-only.
 - Existing read-only tools gaining a mutating path. This one *is* a finding: a caller who
   chose `entry_list` did not consent to a write.
 - User-controlled values interpolated into API paths without encoding (`/entries/${id}`)
