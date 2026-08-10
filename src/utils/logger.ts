@@ -16,10 +16,11 @@ export function setupLogger() {
         defaultMeta: { service: 'toshl-mcp-server' },
         transports: [
             new winston.transports.Console({
-                format: winston.format.combine(
-                    winston.format.colorize(),
-                    winston.format.simple()
-                )
+                // Log to stderr, not stdout. In an MCP stdio server, stdout is
+                // reserved for JSON-RPC protocol messages; any other output on
+                // stdout corrupts the stream and breaks the client connection.
+                stderrLevels: ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'],
+                format: winston.format.simple()
             })
         ]
     });
