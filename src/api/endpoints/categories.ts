@@ -57,6 +57,17 @@ export class CategoriesClient {
 
         return await this.getCategory(id);
     }
+
+    /**
+     * Deletes a category
+     * @param id Category ID
+     * @returns void
+     */
+    async deleteCategory(id: string): Promise<void> {
+        logger.debug('Deleting category', { id });
+
+        await this.client.delete<void>(`/categories/${id}`);
+    }
 }
 
 /**

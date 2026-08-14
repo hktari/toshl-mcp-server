@@ -54,6 +54,25 @@ export function setupTagTools() {
                 required: ['name', 'type'],
             },
         },
+        {
+            name: 'tag_delete',
+            description: 'Delete a tag in Toshl Finance. Deletion is blocked if the tag still has entries unless force is set.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    id: {
+                        type: 'string',
+                        description: 'Tag ID',
+                    },
+                    force: {
+                        type: 'boolean',
+                        description: 'Delete even if the tag still has entries. Warning: may orphan those entries.',
+                        default: false,
+                    },
+                },
+                required: ['id'],
+            },
+        },
     ];
 }
 
@@ -202,6 +221,67 @@ export async function handleTagCreateTool(args: { name: string; type: string; ca
 }
 
 /**
+ * Handles the tag_delete tool
+ * @param args Tool arguments
+ * @returns Tool response
+ */
+export async function handleTagDeleteTool(args: { id: string; force?: boolean }) {
+    logger.debug('Handling tag_delete tool', { args });
+
+    if (!args.id) {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: 'Missing required parameter: id',
+                },
+            ],
+            isError: true,
+        };
+    }
+
+    try {
+        const tagsClient = await createTagsClient();
+        const tag = await tagsClient.getTag(args.id);
+        const entryCount = tag.counts?.entries ?? 0;
+
+        if (entryCount > 0 && !args.force) {
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: `Tag "${tag.name}" has ${entryCount} entries. Deletion blocked to avoid orphaning them. Re-run with force: true to delete anyway.`,
+                    },
+                ],
+            };
+        }
+
+        await tagsClient.deleteTag(args.id);
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Tag ${args.id} deleted.`,
+                },
+            ],
+        };
+    } catch (error) {
+        logger.error('Error handling tag_delete tool', { args, error });
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Error deleting tag: ${(error as Error).message}`,
+                },
+            ],
+            isError: true,
+        };
+    }
+}
+
+/**
  * Handles tag tools
  * @param toolName Tool name
  * @param args Tool arguments
@@ -215,6 +295,8 @@ export async function handleTagTool(toolName: string, args: any) {
             return handleTagGetTool(args as { id: string });
         case 'tag_create':
             return handleTagCreateTool(args as { name: string; type: string; category?: string });
+        case 'tag_delete':
+            return handleTagDeleteTool(args as { id: string; force?: boolean });
         default:
             throw new McpError(
                 ErrorCode.MethodNotFound,

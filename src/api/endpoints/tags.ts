@@ -57,6 +57,17 @@ export class TagsClient {
 
         return await this.getTag(id);
     }
+
+    /**
+     * Deletes a tag
+     * @param id Tag ID
+     * @returns void
+     */
+    async deleteTag(id: string): Promise<void> {
+        logger.debug('Deleting tag', { id });
+
+        await this.client.delete<void>(`/tags/${id}`);
+    }
 }
 
 /**

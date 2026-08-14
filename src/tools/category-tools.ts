@@ -50,6 +50,25 @@ export function setupCategoryTools() {
                 required: ['name', 'type'],
             },
         },
+        {
+            name: 'category_delete',
+            description: 'Delete a category in Toshl Finance. Deletion is blocked if the category still has entries unless force is set.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    id: {
+                        type: 'string',
+                        description: 'Category ID',
+                    },
+                    force: {
+                        type: 'boolean',
+                        description: 'Delete even if the category still has entries. Warning: may orphan those entries.',
+                        default: false,
+                    },
+                },
+                required: ['id'],
+            },
+        },
     ];
 }
 
@@ -197,6 +216,67 @@ export async function handleCategoryCreateTool(args: { name: string; type: strin
 }
 
 /**
+ * Handles the category_delete tool
+ * @param args Tool arguments
+ * @returns Tool response
+ */
+export async function handleCategoryDeleteTool(args: { id: string; force?: boolean }) {
+    logger.debug('Handling category_delete tool', { args });
+
+    if (!args.id) {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: 'Missing required parameter: id',
+                },
+            ],
+            isError: true,
+        };
+    }
+
+    try {
+        const categoriesClient = await createCategoriesClient();
+        const category = await categoriesClient.getCategory(args.id);
+        const entryCount = category.counts?.entries ?? 0;
+
+        if (entryCount > 0 && !args.force) {
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: `Category "${category.name}" has ${entryCount} entries. Deletion blocked to avoid orphaning them. Re-run with force: true to delete anyway.`,
+                    },
+                ],
+            };
+        }
+
+        await categoriesClient.deleteCategory(args.id);
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Category ${args.id} deleted.`,
+                },
+            ],
+        };
+    } catch (error) {
+        logger.error('Error handling category_delete tool', { args, error });
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Error deleting category: ${(error as Error).message}`,
+                },
+            ],
+            isError: true,
+        };
+    }
+}
+
+/**
  * Handles category tools
  * @param toolName Tool name
  * @param args Tool arguments
@@ -210,6 +290,8 @@ export async function handleCategoryTool(toolName: string, args: any) {
             return handleCategoryGetTool(args as { id: string });
         case 'category_create':
             return handleCategoryCreateTool(args as { name: string; type: string });
+        case 'category_delete':
+            return handleCategoryDeleteTool(args as { id: string; force?: boolean });
         default:
             throw new McpError(
                 ErrorCode.MethodNotFound,
