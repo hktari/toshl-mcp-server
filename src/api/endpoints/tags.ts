@@ -41,6 +41,27 @@ export class TagsClient {
     }
 
     /**
+     * Updates an existing tag
+     * @param id Tag ID
+     * @param changes Fields to update (name, type and/or category)
+     * @returns The updated tag
+     */
+    async updateTag(id: string, changes: Partial<ToshlTag>): Promise<ToshlTag> {
+        logger.debug('Updating tag', { id, changes });
+
+        // Fetch the existing tag first so the PUT carries the current
+        // modified timestamp (Toshl uses it for optimistic concurrency)
+        const existing = await this.getTag(id);
+        const updated = {
+            ...existing,
+            ...changes
+        };
+
+        const response = await this.client.put<ToshlTag>(`/tags/${id}`, updated);
+        return response.data;
+    }
+
+    /**
      * Creates a new tag
      * @param tag Tag data (name, type and optional category)
      * @returns The created tag
