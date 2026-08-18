@@ -76,7 +76,7 @@ export function setupCategoryTools() {
         },
         {
             name: 'category_delete',
-            description: 'Permanently delete a category in Toshl Finance. Toshl also updates related data asynchronously; what happens to entries filed under the category is not documented, so treat this as potentially destructive to those entries. Refuses to delete a category that has entries, or whose entry count cannot be determined, unless force is set.',
+            description: 'Permanently delete a category in Toshl Finance. Toshl also updates related data asynchronously; what happens to entries filed under the category is not documented, so treat this as potentially destructive to those entries. Refuses to delete a category that has entries, or whose entry count cannot be determined, unless force is set. That check is not atomic: an entry filed between the check and the deletion is not protected by it.',
             inputSchema: {
                 type: 'object',
                 properties: {
