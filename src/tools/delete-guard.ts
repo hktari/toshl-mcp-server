@@ -10,6 +10,11 @@
  * That distinction is the point. Reading a missing field as "0 entries" would leave a
  * guard that looks protective, reads as protective in the tool description, and silently
  * does nothing.
+ *
+ * What it does NOT protect against: the count is read by one request and the delete is
+ * sent by another, so an entry filed in between passes the check and is deleted anyway.
+ * Closing that would need a conditional delete, which Toshl does not offer. The guard is
+ * a guard against the obvious mistake, not a transaction.
  */
 
 /**
