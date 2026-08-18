@@ -37,7 +37,26 @@ permissions: {}
 jobs:
   review:
     name: Review PR
-    if: github.event.pull_request.draft == false
+    # Dependabot's PRs are version bumps: a lockfile, or a pinned action SHA. The checks
+    # that say anything useful about those are deterministic and already run on every PR in
+    # pr-guard.yml — the manifest/lockfile checks in pr-guard.mjs (install hooks, aliased
+    # and non-registry specifiers, foreign registries) and dependency-review-action, which
+    # resolves the dependency graph against GitHub's advisory database.
+    #
+    # A prose review adds nothing on top of those, and on an action bump it cannot come back
+    # clean even in principle: policy §2.6 flags any `.github/` change unconditionally, and
+    # the reviewer has no network access, so it can never confirm that a new SHA is the one
+    # behind the claimed tag. Every weekly bump therefore produced a Critical plus a High.
+    # That is not a slow check, it is a check that teaches the maintainer to ignore its own
+    # severity labels on the PRs where they matter.
+    #
+    # Matched on the actor login rather than a blanket `user.type != 'Bot'`, so that some
+    # other bot opening a code PR is not silently skipped. It falls through to the action's
+    # own bot gate below, which allows no bots and so leaves the "not reviewed — check it by
+    # hand" comment on the PR. Loud and wrong beats quiet and wrong here.
+    if: >-
+      github.event.pull_request.draft == false
+      && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -49,7 +68,7 @@ jobs:
       # Base branch, NOT the PR head. Gives Claude a trusted copy of current code to
       # compare against, and guarantees the policy it reviews by is ours, not the PR's.
       - name: Check out base branch (trusted)
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           persist-credentials: false
@@ -66,7 +85,7 @@ jobs:
 
       - name: Claude review
         id: claude
-        uses: anthropics/claude-code-action@c3d45e8e941e1b2ad7b278c57482d9c5bf1f35b3 # v1.0.99
+        uses: anthropics/claude-code-action@9d7150bc8a3dae8149739a88019d192b579ad90c # v1.0.193
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -78,8 +97,11 @@ jobs:
           allowed_non_write_users: "*"
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-          # Dependency bumps are a supply-chain surface; review them like anything else.
-          allowed_bots: "dependabot[bot]"
+          # No bots. Dependabot is filtered out at the job level above; anything else is
+          # unexpected and should surface as an unreviewed PR rather than run silently.
+          # Deliberately NOT "*": on a public repo that lets an external App reach this
+          # action, which is the one thing the action's own docs warn about.
+          allowed_bots: ""
 
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }} in

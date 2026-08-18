@@ -41,6 +41,27 @@ export class CategoriesClient {
     }
 
     /**
+     * Updates an existing category
+     * @param id Category ID
+     * @param changes Fields to update (name and/or type)
+     * @returns The updated category
+     */
+    async updateCategory(id: string, changes: Partial<ToshlCategory>): Promise<ToshlCategory> {
+        logger.debug('Updating category', { id, changes });
+
+        // Fetch the existing category first so the PUT carries the current
+        // modified timestamp (Toshl uses it for optimistic concurrency)
+        const existing = await this.getCategory(id);
+        const updated = {
+            ...existing,
+            ...changes
+        };
+
+        const response = await this.client.put<ToshlCategory>(`/categories/${id}`, updated);
+        return response.data;
+    }
+
+    /**
      * Creates a new category
      * @param category Category data (name and type)
      * @returns The created category
