@@ -37,3 +37,20 @@ updates:
       # the bump cannot land on its own. Staying on 16 until someone makes that change.
       - dependency-name: dotenv
         update-types: [version-update:semver-major]
+
+      # TypeScript 7 is the native (Go) compiler. It no longer exposes the JavaScript
+      # compiler API, and ts-jest needs that API to transform the test suites:
+      #
+      #   The TypeScript compiler "typescript" (version 7.0.2) does not expose the
+      #   JavaScript compiler API required by ts-jest.
+      #
+      # So a TS 7 bump takes the whole dev-dependencies group red — it did on #20, on
+      # both Node 20 and 22 — and the group cannot land until the test transform is
+      # sorted out. Holding at 5 keeps the weekly group PR mergeable instead of
+      # regenerating a broken one every week.
+      #
+      # Lifting this means moving tests off ts-jest, or adopting the
+      # "@typescript/native" + "@typescript/typescript6" alias split that the error
+      # message points at. Either is its own change, not a version bump.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
