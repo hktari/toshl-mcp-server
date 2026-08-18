@@ -78,6 +78,23 @@ export class CategoriesClient {
 
         return await this.getCategory(id);
     }
+
+    /**
+     * Deletes a category
+     *
+     * The id is encoded before it reaches the path. The rest of this file interpolates
+     * ids raw, which is a repo-wide gap worth closing separately — but on a DELETE the
+     * consequence of an id that carries path segments changes from reading the wrong
+     * resource to destroying one, so this call site does not wait for that cleanup.
+     *
+     * @param id Category ID
+     * @returns void
+     */
+    async deleteCategory(id: string): Promise<void> {
+        logger.debug('Deleting category', { id });
+
+        await this.client.delete<void>(`/categories/${encodeURIComponent(id)}`);
+    }
 }
 
 /**

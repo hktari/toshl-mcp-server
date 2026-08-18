@@ -1,5 +1,6 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { createTagsClient } from '../api/endpoints/tags.js';
+import { evaluateDelete, readEntryCount } from './delete-guard.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -76,6 +77,25 @@ export function setupTagTools() {
                     category: {
                         type: 'string',
                         description: 'Category ID to associate the tag with',
+                    },
+                },
+                required: ['id'],
+            },
+        },
+        {
+            name: 'tag_delete',
+            description: 'Permanently delete a tag in Toshl Finance. Toshl also updates related data asynchronously; what happens to entries carrying the tag is not documented, so treat this as potentially destructive to those entries. Refuses to delete a tag that is used on entries, or whose entry count cannot be determined, unless force is set. That check is not atomic: an entry tagged between the check and the deletion is not protected by it.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    id: {
+                        type: 'string',
+                        description: 'Tag ID',
+                    },
+                    force: {
+                        type: 'boolean',
+                        description: 'Delete even when the tag is still used on entries, or when its entry count could not be read.',
+                        default: false,
                     },
                 },
                 required: ['id'],
@@ -304,6 +324,80 @@ export async function handleTagUpdateTool(args: { id: string; name?: string; typ
 }
 
 /**
+ * Handles the tag_delete tool
+ *
+ * The entry-count guard is the whole safety story for this tool, so it fails closed:
+ * a count that cannot be read is treated exactly like a non-zero one.
+ *
+ * @param args Tool arguments
+ * @returns Tool response
+ */
+export async function handleTagDeleteTool(args: { id: string; force?: boolean }) {
+    logger.debug('Handling tag_delete tool', { args });
+
+    if (!args.id) {
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: 'Missing required parameter: id',
+                },
+            ],
+            isError: true,
+        };
+    }
+
+    try {
+        const tagsClient = await createTagsClient();
+
+        if (!args.force) {
+            const tag = await tagsClient.getTag(args.id);
+            const verdict = evaluateDelete(readEntryCount(tag), args.force);
+
+            if (!verdict.allowed) {
+                const text =
+                    verdict.reason === 'unknown-count'
+                        ? `Could not determine how many entries tag "${tag.name}" is used on, so the deletion was refused. Check the tag in Toshl, then re-run with force: true to delete it anyway.`
+                        : `Tag "${tag.name}" is still used on ${verdict.entryCount} entries. Deletion refused to protect them. Re-run with force: true to delete it anyway.`;
+
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+        }
+
+        await tagsClient.deleteTag(args.id);
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Tag ${args.id} deleted.`,
+                },
+            ],
+        };
+    } catch (error) {
+        logger.error('Error handling tag_delete tool', { args, error });
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: `Error deleting tag: ${(error as Error).message}`,
+                },
+            ],
+            isError: true,
+        };
+    }
+}
+
+/**
  * Handles tag tools
  * @param toolName Tool name
  * @param args Tool arguments
@@ -319,6 +413,8 @@ export async function handleTagTool(toolName: string, args: any) {
             return handleTagCreateTool(args as { name: string; type: string; category?: string });
         case 'tag_update':
             return handleTagUpdateTool(args as { id: string; name?: string; type?: string; category?: string });
+        case 'tag_delete':
+            return handleTagDeleteTool(args as { id: string; force?: boolean });
         default:
             throw new McpError(
                 ErrorCode.MethodNotFound,
