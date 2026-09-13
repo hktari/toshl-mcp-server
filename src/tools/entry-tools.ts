@@ -3,6 +3,10 @@ import { createEntriesClient } from '../api/endpoints/entries.js';
 import { ToshlTransaction } from '../utils/types.js';
 import logger from '../utils/logger.js';
 
+// Toshl's documented page-size bounds for list endpoints
+const ENTRY_LIST_DEFAULT_PER_PAGE = 200;
+const ENTRY_LIST_MAX_PER_PAGE = 500;
+
 /**
  * Sets up entry tools
  * @returns List of entry tools
@@ -33,10 +37,23 @@ export function setupEntryTools() {
         },
         {
             name: 'entry_list',
-            description: 'List entries in Toshl Finance',
+            description: 'List entries in Toshl Finance. Results are paginated: the response carries '
+                + '`entries` plus `page`, `per_page`, `count` and `next_page`. When `next_page` is not null, '
+                + 'call again with `page` set to that value to fetch the remaining entries.',
             inputSchema: {
                 type: 'object',
                 properties: {
+                    page: {
+                        type: 'integer',
+                        minimum: 0,
+                        description: 'Zero-based page index (default 0). Use the `next_page` value from a previous response.',
+                    },
+                    per_page: {
+                        type: 'integer',
+                        minimum: 1,
+                        maximum: ENTRY_LIST_MAX_PER_PAGE,
+                        description: `Entries per page, 1-${ENTRY_LIST_MAX_PER_PAGE} (default ${ENTRY_LIST_DEFAULT_PER_PAGE}).`,
+                    },
                     from: {
                         type: 'string',
                         description: 'Start date (YYYY-MM-DD)',
@@ -428,15 +445,39 @@ export async function handleEntryListTool(args: any) {
         };
     }
 
+    const page = args.page ?? 0;
+    const perPage = args.per_page ?? ENTRY_LIST_DEFAULT_PER_PAGE;
+    if (!Number.isInteger(page) || page < 0) {
+        return {
+            content: [{ type: 'text', text: 'Invalid parameter: page must be an integer >= 0' }],
+            isError: true,
+        };
+    }
+    if (!Number.isInteger(perPage) || perPage < 1 || perPage > ENTRY_LIST_MAX_PER_PAGE) {
+        return {
+            content: [{
+                type: 'text',
+                text: `Invalid parameter: per_page must be an integer between 1 and ${ENTRY_LIST_MAX_PER_PAGE}`,
+            }],
+            isError: true,
+        };
+    }
+
     try {
         const entriesClient = await createEntriesClient();
-        const entries = await entriesClient.listEntries(args);
+        const { entries, nextPage } = await entriesClient.listEntriesPage({ ...args, page, per_page: perPage });
 
         return {
             content: [
                 {
                     type: 'text',
-                    text: JSON.stringify(entries, null, 2),
+                    text: JSON.stringify({
+                        entries,
+                        page,
+                        per_page: perPage,
+                        count: entries.length,
+                        next_page: nextPage,
+                    }, null, 2),
                 },
             ],
         };

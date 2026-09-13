@@ -139,6 +139,12 @@ export interface ToshlEntry {
     [key: string]: any; // For additional properties
 }
 
+export interface ToshlEntryPage {
+    entries: ToshlEntry[];
+    /** Zero-based index of the following page, or null on the last page */
+    nextPage: number | null;
+}
+
 export interface ToshlEntrySum {
     day: string;
     expenses?: {
