@@ -1,5 +1,6 @@
 import { ToshlApiClient } from '../toshl-client.js';
-import { ToshlEntry, ToshlEntrySum, ToshlTimelineItem } from '../../utils/types.js';
+import { ToshlEntry, ToshlEntryPage, ToshlEntrySum, ToshlTimelineItem } from '../../utils/types.js';
+import { parseNextPage } from '../../utils/pagination.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -20,6 +21,19 @@ export class EntriesClient {
         logger.debug('Fetching entries list', { params });
         const response = await this.client.get<ToshlEntry[]>('/entries', params);
         return response.data;
+    }
+
+    /**
+     * Gets one page of entries together with the page that follows it, if any.
+     * Toshl advertises the next page via the response's Link header.
+     */
+    async listEntriesPage(params: Record<string, any>): Promise<ToshlEntryPage> {
+        logger.debug('Fetching entries page', { params });
+        const response = await this.client.get<ToshlEntry[]>('/entries', params);
+        return {
+            entries: response.data,
+            nextPage: parseNextPage(response.headers['link']),
+        };
     }
 
     /**
