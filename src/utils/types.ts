@@ -29,7 +29,7 @@ export interface ToshlCategory {
     id: string;
     name: string;
     modified: string;
-    type: 'expense' | 'income';
+    type: 'expense' | 'income' | 'system';
     [key: string]: any; // For additional properties
 }
 

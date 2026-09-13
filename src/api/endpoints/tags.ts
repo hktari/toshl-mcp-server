@@ -1,5 +1,6 @@
 import { ToshlApiClient } from '../toshl-client.js';
 import { ToshlTag } from '../../utils/types.js';
+import { assertResourceId } from '../../utils/resource-id.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -36,7 +37,7 @@ export class TagsClient {
     async getTag(id: string): Promise<ToshlTag> {
         logger.debug('Fetching tag details', { id });
 
-        const response = await this.client.get<ToshlTag>(`/tags/${id}`);
+        const response = await this.client.get<ToshlTag>(`/tags/${assertResourceId(id)}`);
         return response.data;
     }
 
@@ -57,7 +58,7 @@ export class TagsClient {
             ...changes
         };
 
-        const response = await this.client.put<ToshlTag>(`/tags/${id}`, updated);
+        const response = await this.client.put<ToshlTag>(`/tags/${assertResourceId(id)}`, updated);
         return response.data;
     }
 
@@ -93,7 +94,7 @@ export class TagsClient {
     async deleteTag(id: string): Promise<void> {
         logger.debug('Deleting tag', { id });
 
-        await this.client.delete<void>(`/tags/${encodeURIComponent(id)}`);
+        await this.client.delete<void>(`/tags/${assertResourceId(id)}`);
     }
 }
 

@@ -1,5 +1,6 @@
 import { ToshlApiClient } from '../toshl-client.js';
 import { ToshlCategory } from '../../utils/types.js';
+import { assertResourceId } from '../../utils/resource-id.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -21,11 +22,21 @@ export class CategoriesClient {
      * Gets a list of all categories
      * @returns List of categories
      */
-    async listCategories(): Promise<ToshlCategory[]> {
-        logger.debug('Fetching categories list');
+    async listCategories(params?: { type?: 'expense' | 'income' | 'system' }): Promise<ToshlCategory[]> {
+        logger.debug('Fetching categories list', { params });
 
-        const response = await this.client.get<ToshlCategory[]>('/categories');
+        const response = await this.client.get<ToshlCategory[]>('/categories', params);
         return response.data;
+    }
+
+    /**
+     * Finds the account's built-in "Transfer" category. Toshl files transfers under a
+     * per-account system category, so its id differs from user to user.
+     * @returns The category id, or undefined if the account has none
+     */
+    async findTransferCategoryId(): Promise<string | undefined> {
+        const systemCategories = await this.listCategories({ type: 'system' });
+        return systemCategories.find((category) => category.name.toLowerCase() === 'transfer')?.id;
     }
 
     /**
@@ -36,7 +47,7 @@ export class CategoriesClient {
     async getCategory(id: string): Promise<ToshlCategory> {
         logger.debug('Fetching category details', { id });
 
-        const response = await this.client.get<ToshlCategory>(`/categories/${id}`);
+        const response = await this.client.get<ToshlCategory>(`/categories/${assertResourceId(id)}`);
         return response.data;
     }
 
@@ -57,7 +68,7 @@ export class CategoriesClient {
             ...changes
         };
 
-        const response = await this.client.put<ToshlCategory>(`/categories/${id}`, updated);
+        const response = await this.client.put<ToshlCategory>(`/categories/${assertResourceId(id)}`, updated);
         return response.data;
     }
 
@@ -93,7 +104,7 @@ export class CategoriesClient {
     async deleteCategory(id: string): Promise<void> {
         logger.debug('Deleting category', { id });
 
-        await this.client.delete<void>(`/categories/${encodeURIComponent(id)}`);
+        await this.client.delete<void>(`/categories/${assertResourceId(id)}`);
     }
 }
 

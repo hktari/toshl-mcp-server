@@ -3,6 +3,29 @@ import { CacheConfig } from './types.js';
 import logger from './logger.js';
 
 /**
+ * Builds the cache key for one HTTP request. The query parameters are part of the
+ * identity: `/entries?from=Jan` and `/entries?from=Feb` are different resources and must
+ * not share an ETag or a cached body. Keys are sorted so argument order does not matter.
+ * @param kind Which slot the key addresses: the stored ETag or the stored response body
+ * @param method HTTP method
+ * @param url Request path
+ * @param params Query parameters, if any
+ */
+export const requestCacheKey = (
+    kind: 'etag' | 'data',
+    method: string | undefined,
+    url: string | undefined,
+    params: Record<string, unknown> | undefined,
+): string => {
+    const query = Object.entries(params ?? {})
+        .filter(([, value]) => value !== undefined)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+        .join('&');
+    return `${kind}:${method}:${url}?${query}`;
+};
+
+/**
  * Cache implementation using node-cache
  */
 export class Cache {

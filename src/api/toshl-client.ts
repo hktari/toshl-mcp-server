@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { AuthProvider, createAuthProvider } from './auth.js';
 import { ApiClientConfig, ApiResponse } from '../utils/types.js';
 import { handleApiError } from '../utils/error-handler.js';
-import cache from '../utils/cache.js';
+import cache, { requestCacheKey } from '../utils/cache.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -40,7 +40,7 @@ export class ToshlApiClient {
                 config.headers = { ...config.headers, ...authHeaders };
 
                 // Add If-None-Match header if we have a cached ETag
-                const cacheKey = `etag:${config.method}:${config.url}`;
+                const cacheKey = requestCacheKey('etag', config.method, config.url, config.params);
                 const etag = cache.get<string>(cacheKey);
                 if (etag) {
                     config.headers['If-None-Match'] = etag;
@@ -59,11 +59,11 @@ export class ToshlApiClient {
                 // Cache ETag if present
                 const etag = response.headers['etag'];
                 if (etag) {
-                    const cacheKey = `etag:${response.config.method}:${response.config.url}`;
+                    const cacheKey = requestCacheKey('etag', response.config.method, response.config.url, response.config.params);
                     cache.set(cacheKey, etag);
 
                     // Cache response data
-                    const dataKey = `data:${response.config.method}:${response.config.url}`;
+                    const dataKey = requestCacheKey('data', response.config.method, response.config.url, response.config.params);
                     cache.set(dataKey, response.data);
                 }
 
@@ -72,7 +72,7 @@ export class ToshlApiClient {
             (error) => {
                 // If 304 Not Modified, return cached data
                 if (error.response && error.response.status === 304) {
-                    const dataKey = `data:${error.config.method}:${error.config.url}`;
+                    const dataKey = requestCacheKey('data', error.config.method, error.config.url, error.config.params);
                     const cachedData = cache.get(dataKey);
 
                     if (cachedData) {

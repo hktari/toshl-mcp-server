@@ -1,5 +1,6 @@
 import { ToshlApiClient } from '../toshl-client.js';
 import { ToshlAccount } from '../../utils/types.js';
+import { assertResourceId } from '../../utils/resource-id.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -36,7 +37,7 @@ export class AccountsClient {
     async getAccount(id: string): Promise<ToshlAccount> {
         logger.debug('Fetching account details', { id });
 
-        const response = await this.client.get<ToshlAccount>(`/accounts/${id}`);
+        const response = await this.client.get<ToshlAccount>(`/accounts/${assertResourceId(id)}`);
         return response.data;
     }
 }

@@ -1,6 +1,7 @@
 import { ToshlApiClient } from '../toshl-client.js';
 import { ToshlEntry, ToshlEntryPage, ToshlEntrySum, ToshlTimelineItem } from '../../utils/types.js';
 import { parseNextPage } from '../../utils/pagination.js';
+import { assertResourceId } from '../../utils/resource-id.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -41,7 +42,7 @@ export class EntriesClient {
      */
     async getEntry(id: string): Promise<ToshlEntry> {
         logger.debug('Fetching entry details', { id });
-        const response = await this.client.get<ToshlEntry>(`/entries/${id}`);
+        const response = await this.client.get<ToshlEntry>(`/entries/${assertResourceId(id)}`);
         return response.data;
     }
 
@@ -109,7 +110,7 @@ export class EntriesClient {
             params.update = updateMode;
         }
 
-        const response = await this.client.put<ToshlEntry>(`/entries/${id}`, updatedEntry, params);
+        const response = await this.client.put<ToshlEntry>(`/entries/${assertResourceId(id)}`, updatedEntry, params);
         return response.data;
     }
 
@@ -127,7 +128,7 @@ export class EntriesClient {
             params.delete = deleteMode;
         }
 
-        await this.client.delete<void>(`/entries/${id}`, params);
+        await this.client.delete<void>(`/entries/${assertResourceId(id)}`, params);
     }
 
     /**

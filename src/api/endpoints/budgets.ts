@@ -1,5 +1,6 @@
 import { ToshlApiClient } from '../toshl-client.js';
 import { ToshlBudget } from '../../utils/types.js';
+import { assertResourceId } from '../../utils/resource-id.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -63,7 +64,7 @@ export class BudgetsClient {
             params.from = from;
         }
 
-        const response = await this.client.get<ToshlBudget>(`/budgets/${id}`, params);
+        const response = await this.client.get<ToshlBudget>(`/budgets/${assertResourceId(id)}`, params);
         return response.data;
     }
 
@@ -82,7 +83,7 @@ export class BudgetsClient {
             params.from = from;
         }
 
-        const response = await this.client.get<any[]>(`/budgets/${id}/history`, params);
+        const response = await this.client.get<any[]>(`/budgets/${assertResourceId(id)}/history`, params);
         return response.data;
     }
 }
