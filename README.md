@@ -58,7 +58,7 @@ The Toshl MCP Server provides a bridge between AI agents and the Toshl Finance A
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/toshl-mcp-server.git
+git clone https://github.com/hktari/toshl-mcp-server.git
 cd toshl-mcp-server
 ```
 
@@ -98,24 +98,24 @@ npm start
 
 ## Configure MCP server
 
-```
- "toshl-mcp-server": {
-      "command": "node",
-      "args": [
-        "/root/source/personal/toshl-mcp-server/dist/src/index.js"
-      ],
-      "env": {
-        "TOSHL_API_TOKEN": "your-token",
-        "TOSHL_API_BASE_URL": "https://api.toshl.com",
-        "MCP_SERVER_NAME": "toshl-mcp-server",
-        "MCP_SERVER_VERSION": "0.1.0",
-        "CACHE_TTL": "3600",
-        "CACHE_ENABLED": "true",
-        "LOG_LEVEL": "debug"
-      },
-      "disabled": false,
-      "autoApprove": []
+The server speaks MCP over stdio. Point your client at `dist/index.js` and pass
+`TOSHL_API_TOKEN` in its environment — step-by-step instructions for **Claude Code**,
+**OpenCode**, and **Codex CLI** are in [docs/mcp-clients.md](docs/mcp-clients.md).
+
+For any other client that takes a generic `mcpServers` config:
+
+```json
+{
+    "mcpServers": {
+        "toshl": {
+            "command": "node",
+            "args": ["/absolute/path/to/toshl-mcp-server/dist/index.js"],
+            "env": {
+                "TOSHL_API_TOKEN": "your-token"
+            }
+        }
     }
+}
 ```
 
 ## Development
@@ -128,6 +128,7 @@ npm run dev
 
 ## Documentation
 
+- [Installing in MCP clients (Claude Code, OpenCode, Codex)](docs/mcp-clients.md)
 - [API Overview](docs/api/overview.md)
 - [Authentication](docs/api/auth.md)
 - [Accounts](docs/api/accounts.md)
