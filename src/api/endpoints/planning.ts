@@ -1,5 +1,6 @@
 import { ToshlApiClient } from '../toshl-client.js';
 import { ToshlPlanning } from '../../utils/types.js';
+import { assertResourceId } from '../../utils/resource-id.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -72,7 +73,7 @@ export class PlanningClient {
             to
         };
 
-        const response = await this.client.get<ToshlPlanning>(`/planning/${id}`, params);
+        const response = await this.client.get<ToshlPlanning>(`/planning/${assertResourceId(id)}`, params);
         return response.data;
     }
 }

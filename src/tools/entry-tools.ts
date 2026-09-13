@@ -1,5 +1,6 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { createEntriesClient } from '../api/endpoints/entries.js';
+import { createCategoriesClient } from '../api/endpoints/categories.js';
 import { ToshlTransaction } from '../utils/types.js';
 import logger from '../utils/logger.js';
 
@@ -900,6 +901,22 @@ export async function handleEntryConvertToTransferTool(args: { id: string; desti
 
     try {
         const entriesClient = await createEntriesClient();
+        const categoriesClient = await createCategoriesClient();
+
+        // Toshl files transfers under a per-account system category; resolve it before
+        // touching any entry so a missing one costs nothing.
+        const transferCategoryId = await categoriesClient.findTransferCategoryId();
+        if (!transferCategoryId) {
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: 'No system "Transfer" category found on this Toshl account, so the entry was left unchanged.',
+                    },
+                ],
+                isError: true,
+            };
+        }
 
         // Get the original entry
         const originalEntry = await entriesClient.getEntry(args.id);
@@ -911,7 +928,7 @@ export async function handleEntryConvertToTransferTool(args: { id: string; desti
             date: originalEntry.date,
             desc: args.description || `Transfer to ${args.destination_account}`,
             account: originalEntry.account,
-            category: '73101634', // Transfer category ID
+            category: transferCategoryId,
             tags: originalEntry.tags,
             transaction: {
                 account: args.destination_account,
@@ -922,8 +939,43 @@ export async function handleEntryConvertToTransferTool(args: { id: string; desti
         // Create the transfer entry
         const newEntry = await entriesClient.createEntry(transferEntry);
 
-        // Delete the original entry
-        await entriesClient.deleteEntry(args.id);
+        // Delete the original entry. The two writes are not atomic, so if this one fails
+        // undo the first rather than leave the user with a duplicate.
+        try {
+            await entriesClient.deleteEntry(args.id);
+        } catch (deleteError) {
+            logger.error('Original entry could not be deleted after creating the transfer; rolling back', {
+                id: args.id,
+                newEntryId: newEntry.id,
+                error: deleteError,
+            });
+            try {
+                await entriesClient.deleteEntry(newEntry.id);
+            } catch (rollbackError) {
+                logger.error('Rollback of the new transfer entry failed', { newEntryId: newEntry.id, error: rollbackError });
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Conversion failed part-way: transfer entry ${newEntry.id} was created but the original `
+                                + `entry ${args.id} could not be deleted, and removing the new transfer also failed. `
+                                + `Both entries now exist; delete one of them manually.`,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: `Conversion aborted: the original entry ${args.id} was kept and the new transfer `
+                            + `was removed again, because deleting the original failed: ${(deleteError as Error).message}`,
+                    },
+                ],
+                isError: true,
+            };
+        }
 
         return {
             content: [
