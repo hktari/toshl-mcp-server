@@ -24,8 +24,8 @@
     "author": "",
     "license": "MIT",
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.30.0",
-        "axios": "^1.19.0",
+        "@modelcontextprotocol/sdk": "^1.31.0",
+        "axios": "^1.20.0",
         "dotenv": "^16.6.1",
         "node-cache": "^5.1.2",
         "winston": "^3.19.0"
