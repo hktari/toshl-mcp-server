@@ -1,0 +1,20 @@
+# Secrets first: no .env variant may ever reach the build context.
+.env
+.env.*
+
+node_modules
+dist
+coverage
+*.log
+
+.git
+.github
+.claude
+.vscode
+.idea
+
+ai_docs
+docs
+examples
+tests
+lib/toshl-api/node_modules
