@@ -83,3 +83,77 @@ export function evaluateDelete(entryCount: number | undefined, force?: boolean):
 function isUsableCount(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
+
+/*
+ * Planned entries.
+ *
+ * Toshl's entry count was observed (2026-10-07) to leave out entries that were dated in
+ * the future when they were written, and not to recount them once their date arrives.
+ * A tag used only on such entries reads as "0 entries", and the count guard alone would
+ * let it be deleted. So when the count allows a delete, the handlers also list entries
+ * carrying the tag or category over a wide fixed window, and refuse if any come back.
+ */
+
+/** Start of the window the entry listing covers */
+export const GUARD_FROM = '2000-01-01';
+
+/** End of the window the entry listing covers */
+export const GUARD_TO = '2099-12-31';
+
+/** How many entries the listing asks for (Toshl's minimum page size); one is enough to refuse */
+const GUARD_SAMPLE_SIZE = 10;
+
+/**
+ * Builds the GET /entries query that looks for entries carrying a tag or category.
+ * @param filter `{ tags: id }` or `{ categories: id }`
+ * @returns Query parameters
+ */
+export const guardEntryQuery = (
+    filter: { tags: string } | { categories: string }
+): Record<string, string | number> => ({
+    ...filter,
+    from: GUARD_FROM,
+    to: GUARD_TO,
+    per_page: GUARD_SAMPLE_SIZE,
+});
+
+/** Why the entry listing refused a delete, or that it may go ahead. */
+export type ListedEntriesVerdict =
+    | { allowed: true }
+    | { allowed: false; reason: 'unknown-entries' }
+    | { allowed: false; reason: 'has-listed-entries'; entries: { id: string; date: string }[] };
+
+/**
+ * Decides whether a delete may go ahead given the entries listed for the tag or category.
+ *
+ * Fails closed: anything other than an array is treated as "could not tell".
+ *
+ * @param entries Entries returned by the guard listing
+ * @returns The verdict, naming up to GUARD_SAMPLE_SIZE entries when that is what blocked it
+ */
+export function evaluateListedEntries(entries: unknown): ListedEntriesVerdict {
+    if (!Array.isArray(entries)) {
+        return { allowed: false, reason: 'unknown-entries' };
+    }
+
+    if (entries.length === 0) {
+        return { allowed: true };
+    }
+
+    return {
+        allowed: false,
+        reason: 'has-listed-entries',
+        entries: entries.slice(0, GUARD_SAMPLE_SIZE).map((entry) => ({
+            id: String(entry?.id),
+            date: String(entry?.date),
+        })),
+    };
+}
+
+/**
+ * Formats the entries that blocked a delete as "id (date)" pairs.
+ * @param entries Entries from a has-listed-entries verdict
+ * @returns Comma-separated list
+ */
+export const describeListedEntries = (entries: { id: string; date: string }[]): string =>
+    entries.map((entry) => `${entry.id} (${entry.date})`).join(', ');

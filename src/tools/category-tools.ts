@@ -1,6 +1,7 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { createCategoriesClient } from '../api/endpoints/categories.js';
-import { evaluateDelete, readEntryCount } from './delete-guard.js';
+import { describeListedEntries, evaluateDelete, readEntryCount } from './delete-guard.js';
+import { listGuardEntries } from './delete-guard-listing.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -76,7 +77,7 @@ export function setupCategoryTools() {
         },
         {
             name: 'category_delete',
-            description: 'Permanently delete a category in Toshl Finance. Toshl also updates related data asynchronously; what happens to entries filed under the category is not documented, so treat this as potentially destructive to those entries. Refuses to delete a category that has entries, or whose entry count cannot be determined, unless force is set. That check is not atomic: an entry filed between the check and the deletion is not protected by it.',
+            description: 'Permanently delete a category in Toshl Finance. Toshl also updates related data asynchronously; what happens to entries filed under the category is not documented, so treat this as potentially destructive to those entries. Refuses to delete a category that has entries, or whose entry count cannot be determined, unless force is set. Entries are checked both through the entry count Toshl reports and by listing entries in the category, since the count omits planned future entries. That check is not atomic: an entry filed between the check and the deletion is not protected by it.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -352,6 +353,25 @@ export async function handleCategoryDeleteTool(args: { id: string; force?: boole
                     verdict.reason === 'unknown-count'
                         ? `Could not determine how many entries category "${category.name}" has, so the deletion was refused. Check the category in Toshl, then re-run with force: true to delete it anyway.`
                         : `Category "${category.name}" still has ${verdict.entryCount} entries. Deletion refused to protect them. Re-run with force: true to delete it anyway.`;
+
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            // The count leaves out planned entries, so also look for entries in the category
+            const listed = await listGuardEntries({ categories: args.id });
+            if (!listed.allowed) {
+                const text =
+                    listed.reason === 'unknown-entries'
+                        ? `Could not list the entries in category "${category.name}", so the deletion was refused. Check the category in Toshl, then re-run with force: true to delete it anyway.`
+                        : `Category "${category.name}" has at least ${listed.entries.length} entries, including planned entries that Toshl's count leaves out: ${describeListedEntries(listed.entries)}. Deletion refused. Re-run with force: true to delete it anyway.`;
 
                 return {
                     content: [

@@ -1,6 +1,7 @@
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { createTagsClient } from '../api/endpoints/tags.js';
-import { evaluateDelete, readEntryCount } from './delete-guard.js';
+import { describeListedEntries, evaluateDelete, readEntryCount } from './delete-guard.js';
+import { listGuardEntries } from './delete-guard-listing.js';
 import { ToshlTag } from '../utils/types.js';
 import logger from '../utils/logger.js';
 
@@ -139,7 +140,7 @@ export function setupTagTools() {
         },
         {
             name: 'tag_delete',
-            description: 'Permanently delete a tag in Toshl Finance. Toshl also updates related data asynchronously; what happens to entries carrying the tag is not documented, so treat this as potentially destructive to those entries. Refuses to delete a tag that is used on entries, or whose entry count cannot be determined, unless force is set. That check is not atomic: an entry tagged between the check and the deletion is not protected by it.',
+            description: 'Permanently delete a tag in Toshl Finance. Toshl also updates related data asynchronously; what happens to entries carrying the tag is not documented, so treat this as potentially destructive to those entries. Refuses to delete a tag that is used on entries, or whose entry count cannot be determined, unless force is set. Entries are checked both through the entry count Toshl reports and by listing entries that carry the tag, since the count omits planned future entries. That check is not atomic: an entry tagged between the check and the deletion is not protected by it.',
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -488,6 +489,25 @@ export async function handleTagDeleteTool(args: { id: string; force?: boolean })
                     verdict.reason === 'unknown-count'
                         ? `Could not determine how many entries tag "${tag.name}" is used on, so the deletion was refused. Check the tag in Toshl, then re-run with force: true to delete it anyway.`
                         : `Tag "${tag.name}" is still used on ${verdict.entryCount} entries. Deletion refused to protect them. Re-run with force: true to delete it anyway.`;
+
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text,
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+
+            // The count leaves out planned entries, so also look for entries carrying the tag
+            const listed = await listGuardEntries({ tags: args.id });
+            if (!listed.allowed) {
+                const text =
+                    listed.reason === 'unknown-entries'
+                        ? `Could not list the entries tag "${tag.name}" is used on, so the deletion was refused. Check the tag in Toshl, then re-run with force: true to delete it anyway.`
+                        : `Tag "${tag.name}" is used on at least ${listed.entries.length} entries, including planned entries that Toshl's count leaves out: ${describeListedEntries(listed.entries)}. Deletion refused. Re-run with force: true to delete it anyway.`;
 
                 return {
                     content: [

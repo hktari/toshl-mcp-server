@@ -1,4 +1,4 @@
-import { readEntryCount, evaluateDelete } from '../../src/tools/delete-guard.js';
+import { readEntryCount, evaluateDelete, evaluateListedEntries, guardEntryQuery, GUARD_FROM, GUARD_TO } from '../../src/tools/delete-guard.js';
 
 // These tests exist for one reason: the entry-count guard is the only thing standing
 // between `category_delete` / `tag_delete` and bookkeeping the user cannot get back.
@@ -77,5 +77,57 @@ describe('evaluateDelete', () => {
     it('lets force override both refusals, since that is what force is for', () => {
         expect(evaluateDelete(21, true)).toEqual({ allowed: true });
         expect(evaluateDelete(undefined, true)).toEqual({ allowed: true });
+    });
+});
+
+// Toshl's entry count leaves out entries that were future-dated when they were written,
+// so the guard also lists entries carrying the tag or category. These cover the verdict
+// on that listing.
+describe('evaluateListedEntries', () => {
+    it('allows the delete when the listing is empty', () => {
+        expect(evaluateListedEntries([])).toEqual({ allowed: true });
+    });
+
+    it('refuses and names the entries it found', () => {
+        expect(evaluateListedEntries([
+            { id: 'e1', date: '2026-10-13', amount: -5 },
+            { id: 'e2', date: '2026-10-07' },
+        ])).toEqual({
+            allowed: false,
+            reason: 'has-listed-entries',
+            entries: [
+                { id: 'e1', date: '2026-10-13' },
+                { id: 'e2', date: '2026-10-07' },
+            ],
+        });
+    });
+
+    it('names at most ten entries', () => {
+        const entries = Array.from({ length: 12 }, (_, i) => ({ id: `e${i}`, date: '2026-11-01' }));
+        const verdict = evaluateListedEntries(entries);
+
+        expect(verdict.allowed).toBe(false);
+        expect(verdict.allowed === false && verdict.reason === 'has-listed-entries' && verdict.entries).toHaveLength(10);
+    });
+
+    it.each([
+        ['undefined', undefined],
+        ['null', null],
+        ['an object', { entries: [] }],
+    ])('fails closed when the listing is %s', (_label, listing) => {
+        expect(evaluateListedEntries(listing)).toEqual({ allowed: false, reason: 'unknown-entries' });
+    });
+});
+
+describe('guardEntryQuery', () => {
+    it('scopes the listing to the id and the wide guard window', () => {
+        expect(guardEntryQuery({ tags: '86596568' })).toEqual({
+            tags: '86596568',
+            from: GUARD_FROM,
+            to: GUARD_TO,
+            per_page: 10,
+        });
+        expect(GUARD_FROM).toBe('2000-01-01');
+        expect(GUARD_TO).toBe('2099-12-31');
     });
 });
