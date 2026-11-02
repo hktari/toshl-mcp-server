@@ -947,10 +947,10 @@
   resolved "https://registry.yarnpkg.com/@keyv/serialize/-/serialize-1.1.1.tgz#0c01dd3a3483882af7cf3878d4e71d505c81fc4a"
   integrity sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==
 
-"@modelcontextprotocol/sdk@^1.32.1":
-  version "1.32.1"
-  resolved "https://registry.yarnpkg.com/@modelcontextprotocol/sdk/-/sdk-1.32.1.tgz#853286b3240b6d8143f5f8e6d58af85c77d475ab"
-  integrity sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw==
+"@modelcontextprotocol/sdk@^1.32.2":
+  version "1.32.2"
+  resolved "https://registry.yarnpkg.com/@modelcontextprotocol/sdk/-/sdk-1.32.2.tgz#6ede940e436998cc20a70092f0af875735bc78f8"
+  integrity sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==
   dependencies:
     "@hono/node-server" "^1.19.9 || ^2.0.5"
     ajv "^8.17.1"
@@ -1571,10 +1571,10 @@ asynckit@^0.4.0:
   resolved "https://registry.npmjs.org/asynckit/-/asynckit-0.4.0.tgz"
   integrity sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==
 
-axios@^1.20.0:
-  version "1.20.0"
-  resolved "https://registry.yarnpkg.com/axios/-/axios-1.20.0.tgz#515513445aa60e71d04b6521ca6210829ccb4786"
-  integrity sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==
+axios@^1.21.0:
+  version "1.21.0"
+  resolved "https://registry.yarnpkg.com/axios/-/axios-1.21.0.tgz#30c363a2652d9649e8b4d2645b34c64ca541ff67"
+  integrity sha512-YCzXMB53Q9PZBsh7yN7wtapit4WepwcHS2fP8QhGsBxSz5YtgYobV7GGlWlAJi+RxfU77GQTQi2DSLUma42EYA==
   dependencies:
     follow-redirects "^1.16.0"
     form-data "^4.0.6"
