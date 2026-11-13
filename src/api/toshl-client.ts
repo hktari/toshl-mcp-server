@@ -4,11 +4,22 @@ import { ApiClientConfig, ApiResponse } from '../utils/types.js';
 import { handleApiError } from '../utils/error-handler.js';
 import cache, { requestCacheKey } from '../utils/cache.js';
 import logger from '../utils/logger.js';
+import { currentUser, isMultiUserMode } from '../server/request-context.js';
 
 /** A cached response body and the Link header that came with it */
 interface CachedResponse {
     data: unknown;
     link?: string;
+}
+
+/**
+ * Cache keys carry the user they belong to. In multi-user mode two users asking for the
+ * same URL must never share an ETag or a body; single-user mode keeps the old keys.
+ * @param key Key from requestCacheKey
+ * @param userId The request's user, when there is one
+ */
+function scopedKey(key: string, userId: string | undefined): string {
+    return userId === undefined ? key : `user:${userId}:${key}`;
 }
 
 /**
@@ -39,14 +50,25 @@ export class ToshlApiClient {
 
         // Add request interceptor for authentication
         this.client.interceptors.request.use(
-            (config) => {
-                // Add authentication headers
-                const authHeaders = this.authProvider.getAuthHeaders();
+            async (config) => {
+                // Multi-user mode: the signed-in user's own Toshl token, never the shared one.
+                // A request outside a user context is a bug, so it fails instead of falling back.
+                const user = currentUser();
+                let authHeaders: Record<string, string>;
+                if (user) {
+                    authHeaders = { Authorization: `Bearer ${await user.getAccessToken()}` };
+                } else if (isMultiUserMode()) {
+                    throw new Error('No signed-in user for this request');
+                } else {
+                    authHeaders = this.authProvider.getAuthHeaders();
+                }
                 // @ts-ignore TODO: check this
                 config.headers = { ...config.headers, ...authHeaders };
+                // Remembered on the request so the response side caches under the same user.
+                (config as AxiosRequestConfig & { userId?: string }).userId = user?.userId;
 
                 // Add If-None-Match header if we have a cached ETag
-                const cacheKey = requestCacheKey('etag', config.method, config.url, config.params);
+                const cacheKey = scopedKey(requestCacheKey('etag', config.method, config.url, config.params), user?.userId);
                 const etag = cache.get<string>(cacheKey);
                 if (etag) {
                     config.headers['If-None-Match'] = etag;
@@ -64,13 +86,14 @@ export class ToshlApiClient {
             (response) => {
                 // Cache ETag if present
                 const etag = response.headers['etag'];
+                const userId = (response.config as AxiosRequestConfig & { userId?: string }).userId;
                 if (etag) {
-                    const cacheKey = requestCacheKey('etag', response.config.method, response.config.url, response.config.params);
+                    const cacheKey = scopedKey(requestCacheKey('etag', response.config.method, response.config.url, response.config.params), userId);
                     cache.set(cacheKey, etag);
 
                     // Cache response data together with its Link header: Toshl leaves Link
                     // off a 304, and pagination reads the next page from it
-                    const dataKey = requestCacheKey('data', response.config.method, response.config.url, response.config.params);
+                    const dataKey = scopedKey(requestCacheKey('data', response.config.method, response.config.url, response.config.params), userId);
                     cache.set<CachedResponse>(dataKey, { data: response.data, link: response.headers['link'] });
                 }
 
@@ -79,7 +102,8 @@ export class ToshlApiClient {
             (error) => {
                 // If 304 Not Modified, return cached data
                 if (error.response && error.response.status === 304) {
-                    const dataKey = requestCacheKey('data', error.config.method, error.config.url, error.config.params);
+                    const userId = (error.config as AxiosRequestConfig & { userId?: string }).userId;
+                    const dataKey = scopedKey(requestCacheKey('data', error.config.method, error.config.url, error.config.params), userId);
                     const cached = cache.get<CachedResponse>(dataKey);
 
                     if (cached?.data) {
@@ -219,7 +243,7 @@ export class ToshlApiClient {
      * @returns true if authenticated
      */
     isAuthenticated(): boolean {
-        return this.authProvider.isConfigured();
+        return currentUser() !== undefined || this.authProvider.isConfigured();
     }
 
     /**

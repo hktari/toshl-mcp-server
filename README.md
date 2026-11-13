@@ -231,6 +231,27 @@ How it behaves:
 - **Logs** record sign-ins, failures, lockouts and token reuse, with the client ID and
   IP. Passphrases, codes and tokens are never logged.
 
+### Sign in with Toshl (one server, many users)
+
+The passphrase mode above serves one person. With a Toshl OAuth app, one hosted server serves
+anyone with a Toshl account: they add `https://<your host>/mcp` as a custom connector in Claude,
+click **Connect**, sign in to Toshl and approve. No personal token, no passphrase.
+
+1. Register an app at [developer.toshl.com/apps](https://developer.toshl.com/apps/) with the
+   redirect URI `https://<your host>/oauth/toshl/callback` and the scopes the tools need
+   (`user:r`, `entries:rw`, `accounts:r`, `budgets:r`, `categories:rw`, `tags:rw`). Until Toshl
+   approves the app for other users, only your own account can sign in.
+2. Set `TOSHL_OAUTH_CLIENT_ID` and `TOSHL_OAUTH_CLIENT_SECRET` instead of `MCP_OAUTH_PASSPHRASE`,
+   alongside `MCP_PUBLIC_URL`, `MCP_OAUTH_SIGNING_KEY` and `MCP_OAUTH_STATE_DIR`. Leave
+   `TOSHL_API_TOKEN` and `MCP_AUTH_TOKEN` unset; the server refuses to start with either.
+
+How it works: Claude's sign-in is handed to Toshl's, and our callback stores the user's Toshl
+tokens in `<MCP_OAUTH_STATE_DIR>/toshl-tokens.json`, encrypted (AES-256-GCM, key derived from
+`MCP_OAUTH_SIGNING_KEY`). Every `/mcp` request runs as the user its access token names: that
+user's Toshl token (refreshed before it expires), that user's cache entries, and only sessions that
+user opened. If Toshl revokes the grant, the user's tokens are deleted and Claude asks them to
+connect again. Design notes: `docs/superpowers/specs/2026-11-13-sign-in-with-toshl-design.md`.
+
 ### Sessions
 
 Sessions are held in memory. A session with no request for 30 minutes is closed, and the

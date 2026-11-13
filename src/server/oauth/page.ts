@@ -106,6 +106,11 @@ export interface SignInPageOptions {
     error?: string;
     /** Disables the form while sign-in is locked out. */
     retryAfterSeconds?: number;
+    /**
+     * Sign in with Toshl: no passphrase field; approving continues to Toshl's sign-in at this
+     * origin, which the page's form-action must then allow.
+     */
+    toshlOrigin?: string;
 }
 
 /**
@@ -138,6 +143,21 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
         );
     } else if (options.error) {
         parts.push(`<p class="error">${escapeHtml(options.error)}</p>`);
+    }
+
+    if (options.toshlOrigin) {
+        // Our own consent step: without it, a link to the authorize URL could connect someone
+        // else's Claude to the visitor's Toshl in one click, if Toshl re-approves silently.
+        parts.push(`<p>Continue only if you started this from your own Claude. Next, you sign in to Toshl.</p>
+<form method="post" action="/oauth/authorize">
+<input type="hidden" name="request" value="${escapeHtml(options.formToken)}">
+<div class="actions">
+<button type="submit" name="action" value="approve" class="primary" autofocus>Continue to Toshl</button>
+<button type="submit" name="action" value="deny">Cancel</button>
+</div>
+</form>`);
+        sendPage(res, status, 'Connect to Toshl', parts.join('\n'), [redirect.origin, options.toshlOrigin], nonce);
+        return;
     }
 
     parts.push(`<form method="post" action="/oauth/authorize">

@@ -7,6 +7,7 @@ import logger from '../utils/logger.js';
 import { OAuthServer } from './oauth/server.js';
 import { createMcpServer } from './server.js';
 import { HttpTransportConfig } from './transport-config.js';
+import { enableMultiUserMode, RequestUser, runAsUser } from './request-context.js';
 
 /** Matches the SDK's own limit for a single JSON-RPC message. */
 export const MAX_BODY_BYTES = 4 * 1024 * 1024;
@@ -23,6 +24,8 @@ interface Session {
     server: Server;
     transport: StreamableHTTPServerTransport;
     lastSeen: number;
+    /** Who opened the session; only that user's tokens may use it. Undefined in single-user mode. */
+    userId?: string;
 }
 
 export interface RunningHttpServer {
@@ -122,6 +125,13 @@ function isAllowedOrigin(req: IncomingMessage, allowedOrigins: Set<string>): boo
 }
 
 /**
+ * Runs `fn` as `user` in multi-user mode, or plainly when there is no user
+ */
+function runAs<T>(user: RequestUser | undefined, fn: () => Promise<T>): Promise<T> {
+    return user ? runAsUser(user, fn) : fn();
+}
+
+/**
  * Extracts the bearer token from the Authorization header
  * @param req HTTP request
  * @returns The token, or undefined when there is no well-formed Bearer header
@@ -160,6 +170,9 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
     }
 
     const oauth = config.oauth ? await OAuthServer.create(config.oauth, config.trustProxy) : undefined;
+    if (oauth?.multiUser) {
+        enableMultiUserMode();
+    }
 
     const sessions = new Map<string, Session>();
     const allowedHostnames = new Set([...LOOPBACK_HOSTNAMES, ...config.allowedHosts]);
@@ -191,12 +204,18 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
             return;
         }
 
+        let user: RequestUser | undefined;
         if (expectedDigest || oauth) {
             const token = bearerToken(req);
+            const subject = token !== undefined && oauth !== undefined ? oauth.accessTokenSubject(token) : undefined;
+            if (oauth?.multiUser && subject !== undefined) {
+                // Signed in, but no longer connected to Toshl: the challenge makes Claude sign in again.
+                user = oauth.toshlUser(subject);
+            }
             const authorized =
                 token !== undefined &&
                 ((expectedDigest !== null && matchesStaticToken(token, expectedDigest)) ||
-                    (oauth !== undefined && oauth.verifyAccessToken(token)));
+                    (subject !== undefined && (!oauth?.multiUser || user !== undefined)));
             if (!authorized) {
                 // With OAuth on, the challenge points clients at discovery so they can sign in.
                 const challenge = oauth ? oauth.challenge(token !== undefined) : 'Bearer';
@@ -232,8 +251,13 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
                 sendJsonRpcError(res, 404, -32001, 'Session not found');
                 return;
             }
+            if (session.userId !== user?.userId) {
+                // Someone else's session: answer as if it didn't exist, so ids can't be probed.
+                sendJsonRpcError(res, 404, -32001, 'Session not found');
+                return;
+            }
             session.lastSeen = Date.now();
-            await session.transport.handleRequest(req, res, body);
+            await runAs(user, () => session.transport.handleRequest(req, res, body));
             return;
         }
 
@@ -246,7 +270,7 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
         const transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (newSessionId) => {
-                sessions.set(newSessionId, { server, transport, lastSeen: Date.now() });
+                sessions.set(newSessionId, { server, transport, lastSeen: Date.now(), userId: user?.userId });
                 logger.info('MCP session opened', { sessionId: newSessionId, sessions: sessions.size });
             },
         });
@@ -259,7 +283,7 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
         };
 
         await server.connect(transport);
-        await transport.handleRequest(req, res, body);
+        await runAs(user, () => transport.handleRequest(req, res, body));
     };
 
     const httpServer = createServer(async (req, res) => {

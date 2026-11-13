@@ -8,8 +8,19 @@
 export interface OAuthConfig {
     /** Public origin the server is reached at, e.g. `https://example.com`. Issuer and resource derive from it. */
     publicUrl: string;
-    /** Entered on the sign-in page to approve a client. Never logged. */
-    passphrase: string;
+    /** Entered on the sign-in page to approve a client. Never logged. Unused with `toshl`. */
+    passphrase?: string;
+    /**
+     * Sign in with Toshl: set from TOSHL_OAUTH_CLIENT_ID / TOSHL_OAUTH_CLIENT_SECRET. Turns the
+     * server multi-user: each person signs in to their own Toshl account, no passphrase.
+     */
+    toshl?: {
+        clientId: string;
+        clientSecret: string;
+        /** Overrides for tests against a fake Toshl; production uses toshl.com. */
+        tokenUrl?: string;
+        authorizeUrl?: string;
+    };
     /** Signs access tokens and sign-in forms. Never logged. */
     signingKey: string;
     /** Still accepted for verification while rotating `signingKey`. */
@@ -76,6 +87,10 @@ export function loadTransportConfig(env: NodeJS.ProcessEnv = process.env): Trans
     }
 
     const authToken = env.MCP_AUTH_TOKEN?.trim() || undefined;
+    if (authToken !== undefined && (env.TOSHL_OAUTH_CLIENT_ID?.trim() || env.TOSHL_OAUTH_CLIENT_SECRET?.trim())) {
+        // A static token has no user behind it, so it can't pick whose Toshl account to read.
+        throw new Error('MCP_AUTH_TOKEN cannot be combined with Sign in with Toshl (TOSHL_OAUTH_CLIENT_ID)');
+    }
     if (authToken !== undefined && authToken.length < MIN_AUTH_TOKEN_LENGTH) {
         // The value itself is deliberately left out of the message.
         throw new Error(`MCP_AUTH_TOKEN must be at least ${MIN_AUTH_TOKEN_LENGTH} characters`);
@@ -124,12 +139,21 @@ function loadOAuthConfig(env: NodeJS.ProcessEnv): OAuthConfig | undefined {
     const passphrase = env.MCP_OAUTH_PASSPHRASE?.trim() || undefined;
     const signingKey = env.MCP_OAUTH_SIGNING_KEY?.trim() || undefined;
     const previousSigningKey = env.MCP_OAUTH_SIGNING_KEY_PREVIOUS?.trim() || undefined;
+    const toshl = loadToshlClient(env);
 
-    if (!passphrase && !signingKey) {
+    if (!passphrase && !signingKey && !toshl) {
         return undefined;
     }
 
-    if (!passphrase || passphrase.length < MIN_PASSPHRASE_LENGTH) {
+    if (toshl) {
+        if (env.TOSHL_API_TOKEN?.trim()) {
+            // Multi-user mode must never fall back to one shared account.
+            throw new Error('Unset TOSHL_API_TOKEN: with Sign in with Toshl each user signs in with their own account');
+        }
+        if (passphrase) {
+            throw new Error('MCP_OAUTH_PASSPHRASE is not used with Sign in with Toshl; unset it');
+        }
+    } else if (!passphrase || passphrase.length < MIN_PASSPHRASE_LENGTH) {
         throw new Error(`MCP_OAUTH_PASSPHRASE must be at least ${MIN_PASSPHRASE_LENGTH} characters`);
     }
     for (const [name, key] of [
@@ -155,10 +179,27 @@ function loadOAuthConfig(env: NodeJS.ProcessEnv): OAuthConfig | undefined {
     return {
         publicUrl: parsePublicUrl(env.MCP_PUBLIC_URL),
         passphrase,
+        toshl,
         signingKey: signingKey as string,
         previousSigningKey,
         stateDir,
     };
+}
+
+/**
+ * Reads the Toshl OAuth app credentials; both or neither
+ * @returns The client credentials, or undefined when Sign in with Toshl is off
+ */
+function loadToshlClient(env: NodeJS.ProcessEnv): { clientId: string; clientSecret: string } | undefined {
+    const clientId = env.TOSHL_OAUTH_CLIENT_ID?.trim() || undefined;
+    const clientSecret = env.TOSHL_OAUTH_CLIENT_SECRET?.trim() || undefined;
+    if (!clientId && !clientSecret) {
+        return undefined;
+    }
+    if (!clientId || !clientSecret) {
+        throw new Error('Set both TOSHL_OAUTH_CLIENT_ID and TOSHL_OAUTH_CLIENT_SECRET for Sign in with Toshl');
+    }
+    return { clientId, clientSecret };
 }
 
 /**
