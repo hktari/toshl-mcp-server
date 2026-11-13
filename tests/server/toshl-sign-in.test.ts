@@ -48,6 +48,10 @@ class FakeToshl {
     tokenCalls: Array<Record<string, string>> = [];
     revoked = new Set<string>();
     expiresIn = 3600;
+    /** Fake Stripe: completed Checkout Sessions, and a switch to make it fail. */
+    sessions: Array<{ id: string; payment_status: string; client_reference_id: string | null; customer_details: { email: string } }> = [];
+    stripeDown = false;
+    stripeCalls: Array<Record<string, string>> = [];
     private issued = 0;
 
     async start() {
@@ -92,6 +96,16 @@ class FakeToshl {
                 expires_in: this.expiresIn,
                 refresh_token: `rt-${user}`,
             });
+        }
+
+        if (url.pathname === '/v1/checkout/sessions') {
+            const q = Object.fromEntries(url.searchParams);
+            this.stripeCalls.push(q);
+            if (this.stripeDown || req.headers.authorization !== 'Bearer sk_test_fake' || q.payment_link !== 'plink_test1') {
+                return this.json(res, 500, { error: { message: 'down' } });
+            }
+            const data = this.sessions.filter((x) => !q['customer_details[email]'] || x.customer_details.email === q['customer_details[email]']);
+            return this.json(res, 200, { data, has_more: false });
         }
 
         const auth = req.headers.authorization ?? '';
@@ -569,5 +583,142 @@ describe('Personal-token sign-in', () => {
         expect(config.transport === 'http' && config.http.oauth?.personalTokens).toBe(true);
         expect(() => loadTransportConfig({ ...env, TOSHL_API_TOKEN: 't' })).toThrow(/TOSHL_API_TOKEN/);
         expect(() => loadTransportConfig({ ...env, TOSHL_OAUTH_CLIENT_ID: 'a', TOSHL_OAUTH_CLIENT_SECRET: 'b' })).toThrow(/Choose one/);
+    });
+});
+
+describe('Paywall (5 €, once)', () => {
+    async function startPaywalled(freeUserIds: string[] = []) {
+        await running.close();
+        running = await startHttpServer({
+            host: '127.0.0.1',
+            port: 0,
+            oauth: {
+                publicUrl: ISSUER,
+                signingKey: SIGNING_KEY,
+                stateDir,
+                personalTokens: true,
+                paywall: {
+                    stripeKey: 'sk_test_fake',
+                    paymentLinkUrl: 'https://buy.stripe.com/test_link',
+                    paymentLinkId: 'plink_test1',
+                    freeUserIds,
+                    stripeApiBase: toshl.url,
+                },
+            },
+            allowNoAuth: false,
+            trustProxy: false,
+            allowedHosts: ['example.com'],
+            allowedOrigins: [],
+        });
+    }
+
+    beforeEach(() => {
+        toshl.sessions = [];
+        toshl.stripeDown = false;
+        toshl.stripeCalls = [];
+    });
+
+    async function pasteToken(user: string) {
+        const pkce = newPkce();
+        const page = await send(running.port, 'GET', authorizePath(pkce.challenge));
+        const request = formToken(page.body);
+        const res = await send(running.port, 'POST', '/oauth/authorize', {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ISSUER },
+            body: new URLSearchParams({ request, action: 'approve', toshl_token: `pat-${user}` }).toString(),
+        });
+        return { pkce, res };
+    }
+
+    function continueFrom(paywall: Res) {
+        const request = /name="request" value="([^"]+)"/.exec(paywall.body)?.[1] as string;
+        const continueAs = /name="continue_as" value="([^"]+)"/.exec(paywall.body)?.[1] as string;
+        return send(running.port, 'POST', '/oauth/authorize', {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ISSUER },
+            body: new URLSearchParams({ request, continue_as: continueAs, action: 'approve' }).toString(),
+        });
+    }
+
+    function stripeLink(paywall: Res): URL {
+        const href = /href="(https:\/\/buy\.stripe\.com[^"]+)"/.exec(paywall.body)?.[1] as string;
+        return new URL(href.replace(/&amp;/g, '&'));
+    }
+
+    test('an unpaid user gets the payment step, with their Toshl e-mail and id on the Stripe link, and no code', async () => {
+        await startPaywalled();
+        const { res } = await pasteToken('alice');
+        expect(res.status).toBe(402);
+        expect(res.headers.location).toBeUndefined();
+        expect(res.body).toContain('5 €, once');
+        const link = stripeLink(res);
+        expect(link.searchParams.get('prefilled_email')).toBe('alice@example.com');
+        expect(link.searchParams.get('client_reference_id')).toBe('toshl_id-alice');
+    });
+
+    test('after paying, Continue connects without pasting the token again', async () => {
+        await startPaywalled();
+        const { res: paywall } = await pasteToken('alice');
+        expect((await continueFrom(paywall)).status).toBe(402);
+
+        toshl.sessions.push({ id: 'cs_1', payment_status: 'paid', client_reference_id: 'toshl_id-alice', customer_details: { email: 'alice@example.com' } });
+        const done = await continueFrom(paywall);
+        expect(done.status).toBe(303);
+        expect(new URL(done.headers.location as string).searchParams.get('code')).toBeTruthy();
+    });
+
+    test('a payment made with another e-mail is still found by the reference', async () => {
+        await startPaywalled();
+        toshl.sessions.push({ id: 'cs_2', payment_status: 'paid', client_reference_id: 'toshl_id-alice', customer_details: { email: 'other@example.org' } });
+        const { res } = await pasteToken('alice');
+        expect(res.status).toBe(303);
+    });
+
+    test('an unpaid session does not count', async () => {
+        await startPaywalled();
+        toshl.sessions.push({ id: 'cs_3', payment_status: 'unpaid', client_reference_id: 'toshl_id-alice', customer_details: { email: 'alice@example.com' } });
+        expect((await pasteToken('alice')).res.status).toBe(402);
+    });
+
+    test('someone else\'s payment does not unlock this user', async () => {
+        await startPaywalled();
+        toshl.sessions.push({ id: 'cs_4', payment_status: 'paid', client_reference_id: 'toshl_id-bob', customer_details: { email: 'bob@example.com' } });
+        expect((await pasteToken('alice')).res.status).toBe(402);
+    });
+
+    test('a paid user is remembered, so a later Stripe outage does not lock them out', async () => {
+        await startPaywalled();
+        toshl.sessions.push({ id: 'cs_5', payment_status: 'paid', client_reference_id: 'toshl_id-alice', customer_details: { email: 'alice@example.com' } });
+        expect((await pasteToken('alice')).res.status).toBe(303);
+        toshl.stripeDown = true;
+        expect((await pasteToken('alice')).res.status).toBe(303);
+    });
+
+    test('a Stripe outage keeps an unknown user behind the paywall', async () => {
+        await startPaywalled();
+        toshl.stripeDown = true;
+        expect((await pasteToken('alice')).res.status).toBe(402);
+    });
+
+    test('free users connect without paying and without asking Stripe', async () => {
+        await startPaywalled(['id-alice']);
+        expect((await pasteToken('alice')).res.status).toBe(303);
+        expect(toshl.stripeCalls).toHaveLength(0);
+    });
+
+    test('a forged Continue for another user is refused', async () => {
+        await startPaywalled();
+        const { res: paywall } = await pasteToken('alice');
+        const forged = paywall.body.replace(/name="continue_as" value="([^"]+)"/, 'name="continue_as" value="v1.e30.AAAA"');
+        expect((await continueFrom({ ...paywall, body: forged })).status).toBe(400);
+    });
+
+    test('config: all three Stripe settings or none, and personal-token mode only', () => {
+        const env = { MCP_TRANSPORT: 'http', MCP_PUBLIC_URL: ISSUER, MCP_OAUTH_SIGNING_KEY: SIGNING_KEY, MCP_OAUTH_STATE_DIR: '/tmp/x', MCP_SIGN_IN: 'personal-token' };
+        const stripe = { STRIPE_SECRET_KEY: 'rk_live_x', STRIPE_PAYMENT_LINK_URL: 'https://buy.stripe.com/x', STRIPE_PAYMENT_LINK_ID: 'plink_abc', PAYWALL_FREE_USER_IDS: '1, 2' };
+        const config = loadTransportConfig({ ...env, ...stripe });
+        expect(config.transport === 'http' && config.http.oauth?.paywall?.freeUserIds).toEqual(['1', '2']);
+        expect(() => loadTransportConfig({ ...env, STRIPE_SECRET_KEY: 'rk_live_x' })).toThrow(/STRIPE_PAYMENT_LINK_URL/);
+        expect(() => loadTransportConfig({ ...env, ...stripe, STRIPE_PAYMENT_LINK_ID: 'nope' })).toThrow(/plink_/);
+        const { MCP_SIGN_IN: _unused, ...passphraseEnv } = env;
+        expect(() => loadTransportConfig({ ...passphraseEnv, MCP_OAUTH_PASSPHRASE: 'p'.repeat(30), ...stripe })).toThrow(/personal-token/);
     });
 });

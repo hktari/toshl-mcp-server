@@ -71,9 +71,9 @@ export class InvalidPersonalTokenError extends Error {}
 export async function personalTokenUserId(
     token: string,
     apiBaseUrl = process.env.TOSHL_API_BASE_URL || 'https://api.toshl.com'
-): Promise<string> {
+): Promise<{ id: string; email?: string }> {
     try {
-        const response = await axios.get<{ id?: unknown }>(`${apiBaseUrl}/me`, {
+        const response = await axios.get<{ id?: unknown; email?: unknown }>(`${apiBaseUrl}/me`, {
             headers: { Authorization: basicAuthorization(token), Accept: 'application/json' },
             timeout: 10000,
         });
@@ -81,7 +81,8 @@ export async function personalTokenUserId(
         if ((typeof id !== 'string' && typeof id !== 'number') || String(id).length === 0) {
             throw new Error('Toshl /me returned no user id');
         }
-        return String(id);
+        const email = typeof response.data?.email === 'string' && response.data.email ? response.data.email : undefined;
+        return { id: String(id), email };
     } catch (error) {
         if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
             throw new InvalidPersonalTokenError('Toshl did not accept the token');

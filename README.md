@@ -263,6 +263,18 @@ sessions. Wrong tokens count towards the sign-in lockout. Deleting the token in 
 the user; Claude then asks them to connect again. Each connection is logged with the number of
 connected users.
 
+### Paywall: a one-time payment (personal-token mode)
+
+Set `STRIPE_SECRET_KEY` (a restricted key with read access to Checkout Sessions is enough),
+`STRIPE_PAYMENT_LINK_URL` and `STRIPE_PAYMENT_LINK_ID` (`plink_...`) to ask for a one-time payment
+before a user's first connection. After a valid token, a user who hasn't paid sees a payment step:
+the Stripe link opens with their Toshl e-mail prefilled and `client_reference_id=toshl_<user id>`;
+back on the page, **Continue** connects them without pasting the token again. A paid, completed
+Checkout Session of that link with either the e-mail or the reference unlocks the account. Paid
+users are kept in `<MCP_OAUTH_STATE_DIR>/paid-users.json`, so Stripe is asked once per user. If
+Stripe can't be reached, users not already known to have paid stay behind the paywall.
+`PAYWALL_FREE_USER_IDS` (comma-separated Toshl user ids) skips it for the owner and testers.
+
 ### Sessions
 
 Sessions are held in memory. A session with no request for 30 minutes is closed, and the

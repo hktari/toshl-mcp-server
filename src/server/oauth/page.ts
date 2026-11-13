@@ -38,13 +38,15 @@ input[type=password] { box-sizing: border-box; width: 100%; padding: .6rem; font
 .actions { display: flex; flex-direction: row-reverse; gap: .5rem; }
 button { flex: 1; padding: .6rem; font-size: 1rem; border-radius: 8px; border: 1px solid #a1a1aa;
        background: #fff; cursor: pointer; }
-button.primary { background: #18181b; color: #fff; border-color: #18181b; }
+button.primary, a.button.primary { background: #18181b; color: #fff; border-color: #18181b; }
+a.button { display: block; text-align: center; padding: .6rem; border-radius: 8px; border: 1px solid #a1a1aa;
+       text-decoration: none; font-weight: 600; }
 @media (prefers-color-scheme: dark) {
   body { background: #18181b; color: #f4f4f5; }
   main { background: #27272a; }
   .warn { background: #422006; } .error { background: #450a0a; }
   input[type=password], button { background: #18181b; color: #f4f4f5; border-color: #52525b; }
-  button.primary { background: #f4f4f5; color: #18181b; }
+  button.primary, a.button.primary { background: #f4f4f5; color: #18181b; }
 }`;
 
 /**
@@ -200,6 +202,49 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
 </div>
 </form>`);
 
+    sendPage(res, status, 'Connect to Toshl', parts.join('\n'), [redirect.origin], nonce);
+}
+
+export interface PaywallPageOptions {
+    /** Stripe Payment Link for this user. */
+    checkoutUrl: string;
+    /** Signed sign-in request plus who is waiting, for the Continue button. */
+    formToken: string;
+    continueToken: string;
+    redirectUri: string;
+    email?: string;
+    error?: string;
+}
+
+/**
+ * Writes the one-time payment step, shown after a valid token from a user who hasn't paid
+ * @param res HTTP response
+ * @param status HTTP status
+ * @param options Page content
+ */
+export function sendPaywallPage(res: ServerResponse, status: number, options: PaywallPageOptions) {
+    const nonce = randomToken(16);
+    const redirect = new URL(options.redirectUri);
+    const parts = [
+        '<h1>One more step</h1>',
+        '<p>Your token works. The hosted Toshl connector costs <strong>5 €, once</strong>: you pay one time and keep access.</p>',
+        options.email
+            ? `<p>Pay with the e-mail of your Toshl account, <strong>${escapeHtml(options.email)}</strong>, so the payment finds you.</p>`
+            : '<p>Pay with the e-mail of your Toshl account, so the payment finds you.</p>',
+    ];
+    if (options.error) {
+        parts.push(`<p class="error">${escapeHtml(options.error)}</p>`);
+    }
+    parts.push(`<p><a class="button primary" href="${escapeHtml(options.checkoutUrl)}" target="_blank" rel="noopener noreferrer">Pay 5 € with Stripe</a></p>
+<p class="hint">Payment opens in a new tab. When it's done, come back here and click Continue.</p>
+<form method="post" action="/oauth/authorize">
+<input type="hidden" name="request" value="${escapeHtml(options.formToken)}">
+<input type="hidden" name="continue_as" value="${escapeHtml(options.continueToken)}">
+<div class="actions">
+<button type="submit" name="action" value="approve" class="primary">Continue</button>
+<button type="submit" name="action" value="deny">Cancel</button>
+</div>
+</form>`);
     sendPage(res, status, 'Connect to Toshl', parts.join('\n'), [redirect.origin], nonce);
 }
 
