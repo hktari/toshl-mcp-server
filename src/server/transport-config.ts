@@ -26,6 +26,12 @@ export interface OAuthConfig {
      * personal token on the consent page, for when no Toshl OAuth app is available.
      */
     personalTokens?: boolean;
+    /**
+     * Who runs a hosted instance, shown on the consent page with links to its terms and
+     * privacy notice (MCP_OPERATOR_NAME, MCP_OPERATOR_URL, MCP_TERMS_URL, MCP_PRIVACY_URL).
+     * Connecting then means agreeing to the terms.
+     */
+    operator?: { name: string; url?: string; termsUrl?: string; privacyUrl?: string };
     /** Signs access tokens and sign-in forms. Never logged. */
     signingKey: string;
     /** Still accepted for verification while rotating `signingKey`. */
@@ -194,9 +200,39 @@ function loadOAuthConfig(env: NodeJS.ProcessEnv): OAuthConfig | undefined {
         passphrase,
         toshl,
         ...(personalTokens ? { personalTokens } : {}),
+        ...loadOperator(env),
         signingKey: signingKey as string,
         previousSigningKey,
         stateDir,
+    };
+}
+
+/**
+ * Reads the operator shown on the consent page
+ * @returns The operator, when MCP_OPERATOR_NAME is set
+ */
+function loadOperator(env: NodeJS.ProcessEnv): { operator?: NonNullable<OAuthConfig['operator']> } {
+    const name = env.MCP_OPERATOR_NAME?.trim();
+    if (!name) {
+        return {};
+    }
+    const link = (key: string): string | undefined => {
+        const value = env[key]?.trim();
+        if (!value) {
+            return undefined;
+        }
+        if (!/^https:\/\/\S+$/.test(value)) {
+            throw new Error(`${key} must be an https URL`);
+        }
+        return value;
+    };
+    return {
+        operator: {
+            name,
+            url: link('MCP_OPERATOR_URL'),
+            termsUrl: link('MCP_TERMS_URL'),
+            privacyUrl: link('MCP_PRIVACY_URL'),
+        },
     };
 }
 

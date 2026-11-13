@@ -263,6 +263,13 @@ sessions. Wrong tokens count towards the sign-in lockout. Deleting the token in 
 the user; Claude then asks them to connect again. Each connection is logged with the number of
 connected users.
 
+### Operator, terms and privacy (hosted instances)
+
+A server that holds other people's financial data should say who runs it. Set `MCP_OPERATOR_NAME`
+(and optionally `MCP_OPERATOR_URL`, `MCP_TERMS_URL`, `MCP_PRIVACY_URL`, all https) and the consent
+page shows "Run by …", states that the service is independent of Toshl and Anthropic, and that
+connecting means agreeing to the terms of use.
+
 ### Sessions
 
 Sessions are held in memory. A session with no request for 30 minutes is closed, and the

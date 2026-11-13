@@ -544,6 +544,29 @@ describe('Personal-token sign-in', () => {
         expect((await callTool(bob.access_token, aliceSession, 'account_list')).status).toBe(404);
     });
 
+    test('the consent page names the operator and links its terms when configured', async () => {
+        await running.close();
+        running = await startHttpServer({
+            host: '127.0.0.1',
+            port: 0,
+            oauth: {
+                publicUrl: ISSUER,
+                signingKey: SIGNING_KEY,
+                stateDir,
+                personalTokens: true,
+                operator: { name: 'B/K Services', url: 'https://example.org', termsUrl: 'https://example.org/terms', privacyUrl: 'https://example.org/privacy' },
+            },
+            allowNoAuth: false,
+            trustProxy: false,
+            allowedHosts: ['example.com'],
+            allowedOrigins: [],
+        });
+        const page = await send(running.port, 'GET', authorizePath(newPkce().challenge));
+        expect(page.body).toContain('Run by <a href="https://example.org"');
+        expect(page.body).toContain('href="https://example.org/terms"');
+        expect(page.body).toContain('not affiliated with Toshl or Anthropic');
+    });
+
     test('the token is stored encrypted', async () => {
         await signInWithToken('alice');
         const file = await readFile(join(stateDir, 'toshl-tokens.json'), 'utf8');
