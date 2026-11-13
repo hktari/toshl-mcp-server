@@ -21,6 +21,11 @@ export interface OAuthConfig {
         tokenUrl?: string;
         authorizeUrl?: string;
     };
+    /**
+     * MCP_SIGN_IN=personal-token: multi-user like `toshl`, but each person pastes a Toshl
+     * personal token on the consent page, for when no Toshl OAuth app is available.
+     */
+    personalTokens?: boolean;
     /** Signs access tokens and sign-in forms. Never logged. */
     signingKey: string;
     /** Still accepted for verification while rotating `signingKey`. */
@@ -87,7 +92,7 @@ export function loadTransportConfig(env: NodeJS.ProcessEnv = process.env): Trans
     }
 
     const authToken = env.MCP_AUTH_TOKEN?.trim() || undefined;
-    if (authToken !== undefined && (env.TOSHL_OAUTH_CLIENT_ID?.trim() || env.TOSHL_OAUTH_CLIENT_SECRET?.trim())) {
+    if (authToken !== undefined && (env.TOSHL_OAUTH_CLIENT_ID?.trim() || env.TOSHL_OAUTH_CLIENT_SECRET?.trim() || env.MCP_SIGN_IN?.trim())) {
         // A static token has no user behind it, so it can't pick whose Toshl account to read.
         throw new Error('MCP_AUTH_TOKEN cannot be combined with Sign in with Toshl (TOSHL_OAUTH_CLIENT_ID)');
     }
@@ -140,12 +145,20 @@ function loadOAuthConfig(env: NodeJS.ProcessEnv): OAuthConfig | undefined {
     const signingKey = env.MCP_OAUTH_SIGNING_KEY?.trim() || undefined;
     const previousSigningKey = env.MCP_OAUTH_SIGNING_KEY_PREVIOUS?.trim() || undefined;
     const toshl = loadToshlClient(env);
+    const signIn = (env.MCP_SIGN_IN || '').trim().toLowerCase();
+    if (signIn !== '' && signIn !== 'personal-token') {
+        throw new Error(`MCP_SIGN_IN must be "personal-token" when set, got "${signIn}"`);
+    }
+    const personalTokens = signIn === 'personal-token';
 
-    if (!passphrase && !signingKey && !toshl) {
+    if (!passphrase && !signingKey && !toshl && !personalTokens) {
         return undefined;
     }
 
-    if (toshl) {
+    if (toshl && personalTokens) {
+        throw new Error('Choose one: MCP_SIGN_IN=personal-token or TOSHL_OAUTH_CLIENT_ID (Sign in with Toshl)');
+    }
+    if (toshl || personalTokens) {
         if (env.TOSHL_API_TOKEN?.trim()) {
             // Multi-user mode must never fall back to one shared account.
             throw new Error('Unset TOSHL_API_TOKEN: with Sign in with Toshl each user signs in with their own account');
@@ -180,6 +193,7 @@ function loadOAuthConfig(env: NodeJS.ProcessEnv): OAuthConfig | undefined {
         publicUrl: parsePublicUrl(env.MCP_PUBLIC_URL),
         passphrase,
         toshl,
+        ...(personalTokens ? { personalTokens } : {}),
         signingKey: signingKey as string,
         previousSigningKey,
         stateDir,

@@ -35,6 +35,63 @@ export interface ToshlTokens {
     refreshToken: string;
     /** Epoch milliseconds. */
     expiresAt: number;
+    /**
+     * `pat`: a personal token the user pasted. It never expires, has no refresh token and goes
+     * in a Basic header. `oauth` (the default, also for records without the field): Bearer.
+     */
+    kind?: 'oauth' | 'pat';
+}
+
+/** Personal tokens never expire; this keeps them clear of the refresh path. */
+const NEVER = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Builds the stored record for a personal token
+ * @param token Personal token as pasted
+ */
+export function personalTokenRecord(token: string): ToshlTokens {
+    return { accessToken: token, refreshToken: '', expiresAt: NEVER, kind: 'pat' };
+}
+
+/** The Authorization header Toshl expects for a personal token: the token as Basic username. */
+export function basicAuthorization(token: string): string {
+    return `Basic ${Buffer.from(`${token}:`).toString('base64')}`;
+}
+
+/** Toshl refused the personal token. */
+export class InvalidPersonalTokenError extends Error {}
+
+/**
+ * Reads whose a personal token is
+ * @param token Personal token as pasted
+ * @param apiBaseUrl Toshl API origin
+ * @returns The Toshl user id
+ * @throws InvalidPersonalTokenError when Toshl refuses it
+ */
+export async function personalTokenUserId(
+    token: string,
+    apiBaseUrl = process.env.TOSHL_API_BASE_URL || 'https://api.toshl.com'
+): Promise<string> {
+    try {
+        const response = await axios.get<{ id?: unknown }>(`${apiBaseUrl}/me`, {
+            headers: { Authorization: basicAuthorization(token), Accept: 'application/json' },
+            timeout: 10000,
+        });
+        const id = response.data?.id;
+        if ((typeof id !== 'string' && typeof id !== 'number') || String(id).length === 0) {
+            throw new Error('Toshl /me returned no user id');
+        }
+        return String(id);
+    } catch (error) {
+        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+            throw new InvalidPersonalTokenError('Toshl did not accept the token');
+        }
+        if (axios.isAxiosError(error)) {
+            // Status only: the request carries the token.
+            throw new Error(`Toshl /me failed (${error.response?.status ?? 'no response'})`);
+        }
+        throw error;
+    }
 }
 
 /** Toshl revoked or rejected the refresh token: the user has to connect again. */
@@ -151,7 +208,7 @@ export class ToshlTokenStore {
         private readonly file: string,
         private readonly records: Map<string, ToshlTokens>,
         private readonly key: Buffer,
-        private readonly client: ToshlOAuthClient
+        private readonly client: ToshlOAuthClient | undefined
     ) {}
 
     /**
@@ -159,14 +216,14 @@ export class ToshlTokenStore {
      * @param stateDir Directory holding the store
      * @param signingKey Current signing key
      * @param previousSigningKey Previous signing key, still accepted for decryption
-     * @param client Toshl OAuth client, for refreshing
+     * @param client Toshl OAuth client, for refreshing; undefined when only personal tokens are stored
      * @throws Error when the file exists but can't be read or decrypted
      */
     static async open(
         stateDir: string,
         signingKey: string,
         previousSigningKey: string | undefined,
-        client: ToshlOAuthClient
+        client: ToshlOAuthClient | undefined
     ): Promise<ToshlTokenStore> {
         await mkdir(stateDir, { recursive: true, mode: 0o700 });
         try {
@@ -239,6 +296,19 @@ export class ToshlTokenStore {
     }
 
     /**
+     * The Authorization header value for `userId`: Basic for a personal token, Bearer (refreshed
+     * when needed) for an OAuth one
+     * @throws ToshlGrantRevokedError when the user isn't connected
+     */
+    async authorization(userId: string): Promise<string> {
+        const tokens = this.records.get(userId);
+        if (tokens?.kind === 'pat') {
+            return basicAuthorization(tokens.accessToken);
+        }
+        return `Bearer ${await this.accessToken(userId)}`;
+    }
+
+    /**
      * A valid access token for `userId`, refreshed when it is about to expire. Concurrent
      * callers for the same user share one refresh.
      * @throws ToshlGrantRevokedError when the user has no tokens or Toshl revoked them
@@ -248,16 +318,20 @@ export class ToshlTokenStore {
         if (!tokens) {
             return Promise.reject(new ToshlGrantRevokedError('Not connected to Toshl'));
         }
-        if (tokens.expiresAt - REFRESH_MARGIN_MS > Date.now()) {
+        if (tokens.kind === 'pat' || tokens.expiresAt - REFRESH_MARGIN_MS > Date.now()) {
             return Promise.resolve(tokens.accessToken);
         }
+        if (!this.client) {
+            return Promise.reject(new ToshlGrantRevokedError('No OAuth client to refresh with'));
+        }
+        const client = this.client;
         const inFlight = this.refreshing.get(userId);
         if (inFlight) {
             return inFlight;
         }
         const run = (async () => {
             try {
-                const renewed = await this.client.refresh(tokens.refreshToken);
+                const renewed = await client.refresh(tokens.refreshToken);
                 if (this.records.get(userId) !== tokens) {
                     // The user signed in again while this ran; their new tokens win.
                     return (this.records.get(userId) as ToshlTokens | undefined)?.accessToken ?? renewed.accessToken;
@@ -320,7 +394,8 @@ function unseal(key: Buffer, userId: string, sealed: string): ToshlTokens | unde
         decipher.setAuthTag(tag);
         const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
         const value = JSON.parse(plain) as ToshlTokens;
-        return typeof value.accessToken === 'string' && typeof value.refreshToken === 'string' && typeof value.expiresAt === 'number'
+        return typeof value.accessToken === 'string' && typeof value.refreshToken === 'string' && typeof value.expiresAt === 'number' &&
+            (value.kind === undefined || value.kind === 'oauth' || value.kind === 'pat')
             ? value
             : undefined;
     } catch {

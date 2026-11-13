@@ -56,7 +56,7 @@ export class ToshlApiClient {
                 const user = currentUser();
                 let authHeaders: Record<string, string>;
                 if (user) {
-                    authHeaders = { Authorization: `Bearer ${await user.getAccessToken()}` };
+                    authHeaders = { Authorization: await user.getAuthorization() };
                 } else if (isMultiUserMode()) {
                     throw new Error('No signed-in user for this request');
                 } else {
@@ -99,7 +99,15 @@ export class ToshlApiClient {
 
                 return response;
             },
-            (error) => {
+            async (error) => {
+                // Multi-user mode: Toshl refusing the user's own credentials means they were
+                // revoked (a deleted personal token, a withdrawn grant). Forget them; the next
+                // /mcp request gets the sign-in challenge.
+                const user = currentUser();
+                if (user && error.response?.status === 401) {
+                    await user.revoke().catch(() => undefined);
+                }
+
                 // If 304 Not Modified, return cached data
                 if (error.response && error.response.status === 304) {
                     const userId = (error.config as AxiosRequestConfig & { userId?: string }).userId;

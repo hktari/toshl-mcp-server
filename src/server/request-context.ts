@@ -10,8 +10,10 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 export interface RequestUser {
     /** Toshl user id, the `sub` of our access token. */
     userId: string;
-    /** Returns a valid Toshl access token for this user, refreshing it when needed. */
-    getAccessToken: () => Promise<string>;
+    /** The Authorization header for this user's Toshl requests, refreshing an OAuth token when needed. */
+    getAuthorization: () => Promise<string>;
+    /** Toshl refused this user's credentials: forget them, so Claude asks the user to connect again. */
+    revoke: () => Promise<void>;
 }
 
 const storage = new AsyncLocalStorage<RequestUser>();

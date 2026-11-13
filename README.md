@@ -252,6 +252,17 @@ user's Toshl token (refreshed before it expires), that user's cache entries, and
 user opened. If Toshl revokes the grant, the user's tokens are deleted and Claude asks them to
 connect again. Design notes: `docs/superpowers/specs/2026-11-13-sign-in-with-toshl-design.md`.
 
+### Personal-token sign-in (many users, no Toshl OAuth app)
+
+Toshl issues OAuth apps on request only; [developer.toshl.com/apps](https://developer.toshl.com/apps/)
+offers personal tokens. Until an OAuth app exists, set `MCP_SIGN_IN=personal-token` instead of the
+Toshl client variables. The consent page then asks each person to create a personal token in
+Toshl and paste it once. The server checks it against Toshl's `/me`, stores it encrypted under
+that user, and everything else works as in Sign in with Toshl: per-user requests, cache and
+sessions. Wrong tokens count towards the sign-in lockout. Deleting the token in Toshl disconnects
+the user; Claude then asks them to connect again. Each connection is logged with the number of
+connected users.
+
 ### Sessions
 
 Sessions are held in memory. A session with no request for 30 minutes is closed, and the

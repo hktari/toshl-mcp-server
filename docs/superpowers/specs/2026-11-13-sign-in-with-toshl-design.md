@@ -71,3 +71,12 @@ to Toshl, approves, and is done. No token, no passphrase, no server of their own
 
 - Registering the Toshl app (redirect URI above) is Boštjan's step; other users need Toshl's approval.
 - Hosting (Railway or similar, with a persistent volume for `MCP_OAUTH_STATE_DIR`).
+
+## Addendum 2026-11-13: personal-token mode
+
+developer.toshl.com/apps offers personal tokens only; OAuth apps come from Toshl on request. To
+measure interest before that, `MCP_SIGN_IN=personal-token` runs the same multi-user server with the
+consent page asking for a pasted personal token (approach 3 above, now as a stopgap). The token is
+checked against `/me`, stored as a `pat` record (Basic auth, never refreshed), and a 401 from Toshl
+on any request forgets the user's credentials so Claude asks them to connect again. Connections are
+logged with the user count as the interest signal.

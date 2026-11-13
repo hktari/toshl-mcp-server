@@ -94,7 +94,10 @@ class FakeToshl {
             });
         }
 
-        const user = /^Bearer at-(\w+)-\d+$/.exec(req.headers.authorization ?? '')?.[1];
+        const auth = req.headers.authorization ?? '';
+        const basic = /^Basic (.+)$/.exec(auth)?.[1];
+        const patUser = basic ? /^pat-(\w+):$/.exec(Buffer.from(basic, 'base64').toString('utf8'))?.[1] : undefined;
+        const user = /^Bearer at-(\w+)-\d+$/.exec(auth)?.[1] ?? (patUser && !this.revoked.has(patUser) ? patUser : undefined);
         if (!user) {
             return this.json(res, 401, { error: 'unauthorized' });
         }
@@ -467,5 +470,104 @@ describe('Sign in with Toshl configuration', () => {
 
     test('needs both the id and the secret', () => {
         expect(() => loadTransportConfig({ ...base, TOSHL_OAUTH_CLIENT_SECRET: '' })).toThrow(/TOSHL_OAUTH_CLIENT_SECRET/);
+    });
+});
+
+describe('Personal-token sign-in', () => {
+    beforeEach(async () => {
+        // Replace the OAuth-mode server from the outer beforeEach with a personal-token one.
+        await running.close();
+        running = await startHttpServer({
+            host: '127.0.0.1',
+            port: 0,
+            oauth: { publicUrl: ISSUER, signingKey: SIGNING_KEY, stateDir, personalTokens: true },
+            allowNoAuth: false,
+            trustProxy: false,
+            allowedHosts: ['example.com'],
+            allowedOrigins: [],
+        });
+    });
+
+    async function connectWithToken(token: string) {
+        const pkce = newPkce();
+        const page = await send(running.port, 'GET', authorizePath(pkce.challenge));
+        expect(page.status).toBe(200);
+        expect(page.body).toContain('developer.toshl.com/apps');
+        expect(page.body).toContain('name="toshl_token"');
+        const res = await send(running.port, 'POST', '/oauth/authorize', {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ISSUER },
+            body: new URLSearchParams({ request: formToken(page.body), action: 'approve', toshl_token: token }).toString(),
+        });
+        return { pkce, res };
+    }
+
+    async function signInWithToken(user: string) {
+        const { pkce, res } = await connectWithToken(`pat-${user}`);
+        expect(res.status).toBe(303);
+        const code = new URL(res.headers.location as string).searchParams.get('code') as string;
+        const tokenRes = await send(running.port, 'POST', '/oauth/token', {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                grant_type: 'authorization_code',
+                code,
+                redirect_uri: CLAUDE_CALLBACK,
+                client_id: CLAUDE_CLIENT.clientId,
+                code_verifier: pkce.verifier,
+                resource: RESOURCE,
+            }).toString(),
+        });
+        expect(tokenRes.status).toBe(200);
+        return JSON.parse(tokenRes.body) as { access_token: string };
+    }
+
+    test('a pasted personal token connects Claude to that user\'s Toshl', async () => {
+        const tokens = await signInWithToken('alice');
+        const session = await openSession(tokens.access_token);
+        expect(JSON.stringify(rpcBody(await callTool(tokens.access_token, session, 'account_list')))).toContain("alice's account");
+    });
+
+    test('a token Toshl refuses shows the page again with an error, and Claude gets no code', async () => {
+        const { res } = await connectWithToken('pat-nobody-x');
+        expect(res.status).toBe(401);
+        expect(res.body).toContain('did not accept that token');
+        expect(res.headers.location).toBeUndefined();
+    });
+
+    test('two token users stay apart', async () => {
+        const alice = await signInWithToken('alice');
+        const bob = await signInWithToken('bob');
+        const bobSession = await openSession(bob.access_token);
+        const body = JSON.stringify(rpcBody(await callTool(bob.access_token, bobSession, 'account_list')));
+        expect(body).toContain("bob's account");
+        expect(body).not.toContain('alice');
+        const aliceSession = await openSession(alice.access_token);
+        expect((await callTool(bob.access_token, aliceSession, 'account_list')).status).toBe(404);
+    });
+
+    test('the token is stored encrypted', async () => {
+        await signInWithToken('alice');
+        const file = await readFile(join(stateDir, 'toshl-tokens.json'), 'utf8');
+        expect(file).toContain('id-alice');
+        expect(file).not.toContain('pat-alice');
+    });
+
+    test('a token deleted in Toshl disconnects the user and Claude is asked to connect again', async () => {
+        const alice = await signInWithToken('alice');
+        const session = await openSession(alice.access_token);
+        toshl.revoked.add('alice');
+        await callTool(alice.access_token, session, 'account_list');
+        const next = await send(running.port, 'POST', '/mcp', {
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${alice.access_token}` },
+            body: '{}',
+        });
+        expect(next.status).toBe(401);
+    });
+
+    test('config: MCP_SIGN_IN=personal-token needs no passphrase and refuses a shared token', () => {
+        const env = { MCP_TRANSPORT: 'http', MCP_PUBLIC_URL: ISSUER, MCP_OAUTH_SIGNING_KEY: SIGNING_KEY, MCP_OAUTH_STATE_DIR: '/tmp/x', MCP_SIGN_IN: 'personal-token' };
+        const config = loadTransportConfig(env);
+        expect(config.transport === 'http' && config.http.oauth?.personalTokens).toBe(true);
+        expect(() => loadTransportConfig({ ...env, TOSHL_API_TOKEN: 't' })).toThrow(/TOSHL_API_TOKEN/);
+        expect(() => loadTransportConfig({ ...env, TOSHL_OAUTH_CLIENT_ID: 'a', TOSHL_OAUTH_CLIENT_SECRET: 'b' })).toThrow(/Choose one/);
     });
 });

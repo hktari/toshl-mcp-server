@@ -7,7 +7,22 @@ import { deriveKey, randomToken, safeEqual, sha256, signPayload, verifyPayload }
 import { sendErrorPage, sendSignInPage } from './page.js';
 import { rateLimitKey, RequestLimiter, SignInLimiter } from './rate-limit.js';
 import { RefreshTokenStore } from './refresh-store.js';
-import { TOSHL_AUTHORIZE_URL, TOSHL_TOKEN_URL, ToshlOAuthClient, ToshlTokenStore } from './toshl-auth.js';
+import {
+    InvalidPersonalTokenError,
+    personalTokenRecord,
+    personalTokenUserId,
+    TOSHL_AUTHORIZE_URL,
+    TOSHL_TOKEN_URL,
+    ToshlOAuthClient,
+    ToshlTokenStore,
+} from './toshl-auth.js';
+
+/** How the users of a multi-user server prove who they are to Toshl. */
+interface ToshlMode {
+    tokens: ToshlTokenStore;
+    /** Sign in with Toshl (OAuth). Undefined in personal-token mode. */
+    client?: ToshlOAuthClient;
+}
 import { RequestUser } from '../request-context.js';
 
 /** Access tokens are stateless, so this is also how long one outlives a revocation. */
@@ -218,7 +233,7 @@ export class OAuthServer {
         private readonly config: OAuthConfig,
         private readonly trustProxy: boolean,
         private readonly store: RefreshTokenStore,
-        private readonly toshl?: { client: ToshlOAuthClient; tokens: ToshlTokenStore }
+        private readonly toshl?: ToshlMode
     ) {
         this.issuer = config.publicUrl;
         this.resource = `${config.publicUrl}/mcp`;
@@ -237,8 +252,11 @@ export class OAuthServer {
      */
     static async create(config: OAuthConfig, trustProxy: boolean): Promise<OAuthServer> {
         const store = await RefreshTokenStore.open(config.stateDir);
-        let toshl: { client: ToshlOAuthClient; tokens: ToshlTokenStore } | undefined;
-        if (config.toshl) {
+        let toshl: ToshlMode | undefined;
+        if (config.personalTokens) {
+            const tokens = await ToshlTokenStore.open(config.stateDir, config.signingKey, config.previousSigningKey, undefined);
+            toshl = { tokens };
+        } else if (config.toshl) {
             const client = new ToshlOAuthClient(
                 config.toshl,
                 undefined,
@@ -250,7 +268,7 @@ export class OAuthServer {
         }
         logger.info('OAuth enabled', {
             issuer: config.publicUrl,
-            signIn: toshl ? 'toshl' : 'passphrase',
+            signIn: config.personalTokens ? 'personal-token' : toshl ? 'toshl' : 'passphrase',
             storedRefreshTokens: store.size,
         });
         return new OAuthServer(config, trustProxy, store, toshl);
@@ -271,7 +289,16 @@ export class OAuthServer {
             return undefined;
         }
         const tokens = this.toshl.tokens;
-        return { userId: sub, getAccessToken: () => tokens.accessToken(sub) };
+        return {
+            userId: sub,
+            getAuthorization: () => tokens.authorization(sub),
+            revoke: async () => {
+                if (tokens.has(sub)) {
+                    logger.info('Toshl refused a user\'s credentials; disconnected them');
+                    await tokens.remove(sub);
+                }
+            },
+        };
     }
 
     /**
@@ -359,7 +386,7 @@ export class OAuthServer {
         }
 
         if (path === '/oauth/toshl/callback') {
-            if (req.method === 'GET' && this.toshl) {
+            if (req.method === 'GET' && this.toshl?.client) {
                 await this.toshlCallback(req, res);
             } else {
                 sendErrorPage(res, 404, 'Not found.');
@@ -607,9 +634,13 @@ export class OAuthServer {
             return;
         }
 
-        if (this.toshl) {
+        if (this.toshl?.client) {
             // Consent given on our page; the Toshl sign-in is the authentication.
             this.startToshlSignIn(res, client, request);
+            return;
+        }
+        if (this.toshl) {
+            await this.personalTokenSignIn(res, ip, client, request, form.get('toshl_token') ?? '');
             return;
         }
 
@@ -645,7 +676,7 @@ export class OAuthServer {
      * tied to this browser by a cookie.
      */
     private startToshlSignIn(res: ServerResponse, client: OAuthClient, request: AuthorizationRequest) {
-        const toshl = this.toshl as { client: ToshlOAuthClient };
+        const toshl = this.toshl as Required<ToshlMode>;
         const now = Date.now();
         for (const [key, pending] of this.toshlSignIns) {
             if (pending.expiresAt <= now) {
@@ -686,7 +717,7 @@ export class OAuthServer {
      * seconds), the user's tokens are stored, and Claude gets our own authorization code.
      */
     private async toshlCallback(req: IncomingMessage, res: ServerResponse) {
-        const toshl = this.toshl as { client: ToshlOAuthClient; tokens: ToshlTokenStore };
+        const toshl = this.toshl as Required<ToshlMode>;
         const ip = this.clientIp(req);
         if (!this.authorizeLimiter.allow(ip)) {
             sendErrorPage(res, 429, 'Too many requests. Wait a minute and try again.');
@@ -751,6 +782,56 @@ export class OAuthServer {
         this.redirectWithParams(res, request.redirectUri, { code, state: request.state });
     }
 
+    /**
+     * Personal-token mode: checks the pasted token against Toshl, stores it for the user it
+     * belongs to and hands Claude our code. Wrong tokens count towards the sign-in lockout.
+     */
+    private async personalTokenSignIn(
+        res: ServerResponse,
+        ip: string,
+        client: OAuthClient,
+        request: AuthorizationRequest,
+        pasted: string
+    ) {
+        const tokens = (this.toshl as ToshlMode).tokens;
+        const retryAfterSeconds = this.signInLimiter.retryAfterSeconds(ip);
+        if (retryAfterSeconds > 0) {
+            this.showSignIn(res, 429, client, request, { retryAfterSeconds }, { 'Retry-After': String(retryAfterSeconds) });
+            return;
+        }
+
+        const token = pasted.trim();
+        let userId: string;
+        try {
+            if (!/^[\x21-\x7e]{6,512}$/.test(token)) {
+                throw new InvalidPersonalTokenError('Not a token');
+            }
+            userId = await personalTokenUserId(token);
+        } catch (error) {
+            if (error instanceof InvalidPersonalTokenError) {
+                this.signInLimiter.recordFailure(ip);
+                logger.warn('Personal-token sign-in refused by Toshl', { clientId: client.clientId, ip });
+                await sleep(FAILED_SIGN_IN_DELAY_MS);
+                this.showSignIn(res, 401, client, request, {
+                    error: 'Toshl did not accept that token. Copy it again from developer.toshl.com/apps.',
+                    retryAfterSeconds: this.signInLimiter.retryAfterSeconds(ip),
+                });
+                return;
+            }
+            logger.error('Personal-token sign-in failed', { message: error instanceof Error ? error.message : String(error) });
+            this.showSignIn(res, 502, client, request, { error: 'Toshl could not be reached. Try again in a minute.' });
+            return;
+        }
+
+        this.signInLimiter.recordSuccess(ip);
+        const isNew = !tokens.has(userId);
+        await tokens.save(userId, personalTokenRecord(token));
+        // The interest signal: one line per connection, with how many people are connected.
+        logger.info('User connected with a personal token', { clientId: client.clientId, newUser: isNew, users: tokens.size });
+        const code = this.createCode({ ...request, sub: userId });
+        this.redirectWithParams(res, request.redirectUri, { code, state: request.state });
+    }
+
     private showSignIn(
         res: ServerResponse,
         status: number,
@@ -776,7 +857,11 @@ export class OAuthServer {
             redirectUri: request.redirectUri,
             loopback: client.loopback,
             formToken,
-            ...(this.toshl ? { toshlOrigin: new URL(this.toshl.client.authorizeRedirect(this.toshlRedirectUri(), 'x')).origin } : {}),
+            ...(this.toshl?.client
+                ? { toshlOrigin: new URL(this.toshl.client.authorizeRedirect(this.toshlRedirectUri(), 'x')).origin }
+                : this.toshl
+                  ? { personalToken: true }
+                  : {}),
             ...extra,
         });
     }
