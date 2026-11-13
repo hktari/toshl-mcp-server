@@ -23,6 +23,7 @@ import { setupBudgetTools } from '../tools/budget-tools.js';
 import { setupUserTools } from '../tools/user-tools.js';
 import { setupAnalysisTools } from '../tools/analysis-tools.js';
 import { setupEntryTools } from '../tools/entry-tools.js';
+import { annotate } from '../tools/annotations.js';
 
 /**
  * Builds a Toshl MCP server with every resource and tool handler registered,
@@ -255,7 +256,7 @@ function setupToolHandlers(server: Server) {
                 ...userTools,
                 ...entryTools,
                 ...analysisTools,
-            ],
+            ].map(annotate),
         };
     });
 

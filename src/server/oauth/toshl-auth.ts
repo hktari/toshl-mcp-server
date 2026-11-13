@@ -288,6 +288,39 @@ export class ToshlTokenStore {
         await this.persist();
     }
 
+    /**
+     * Toshl answered 401 to a request sent with `usedAuthorization` for `userId`. Acts only if the
+     * stored credentials are still those: a personal token is deleted once `/me` confirms Toshl
+     * refuses it; an OAuth access token is marked expired, so the next use refreshes it (and a
+     * refused refresh disconnects the user, as before).
+     * @returns Whether the user was disconnected
+     */
+    async handleUnauthorized(userId: string, usedAuthorization: string): Promise<boolean> {
+        const tokens = this.records.get(userId);
+        if (!tokens) {
+            return false;
+        }
+        const current = tokens.kind === 'pat' ? basicAuthorization(tokens.accessToken) : `Bearer ${tokens.accessToken}`;
+        if (current !== usedAuthorization) {
+            // Already replaced (the user reconnected, or a refresh happened): keep the new ones.
+            return false;
+        }
+        if (tokens.kind === 'pat') {
+            try {
+                await personalTokenUserId(tokens.accessToken);
+                return false; // /me still accepts it: the 401 was something else.
+            } catch (error) {
+                if (!(error instanceof InvalidPersonalTokenError) || this.records.get(userId) !== tokens) {
+                    return false; // Toshl unreachable, or replaced meanwhile: keep it.
+                }
+                await this.remove(userId);
+                return true;
+            }
+        }
+        this.records.set(userId, { ...tokens, expiresAt: 0 });
+        return false;
+    }
+
     async remove(userId: string): Promise<void> {
         this.sealed.delete(userId);
         if (this.records.delete(userId)) {

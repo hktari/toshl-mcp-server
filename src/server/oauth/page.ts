@@ -116,6 +116,25 @@ export interface SignInPageOptions {
     toshlOrigin?: string;
     /** Personal-token sign-in: a field for the user's Toshl personal token. */
     personalToken?: boolean;
+    /** Who runs this instance, with links to its terms and privacy notice. */
+    operator?: { name: string; url?: string; termsUrl?: string; privacyUrl?: string };
+}
+
+/**
+ * The operator line under the form: who runs the server, and that connecting means agreeing
+ * to its terms. Not affiliated with Toshl or Anthropic, said plainly.
+ */
+function operatorFooter(operator: SignInPageOptions['operator']): string {
+    if (!operator) {
+        return '';
+    }
+    const link = (href: string | undefined, text: string) =>
+        href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>` : escapeHtml(text);
+    const agree =
+        operator.termsUrl || operator.privacyUrl
+            ? `<p class="hint">By connecting you agree to the ${link(operator.termsUrl, 'terms of use')} and confirm you have read the ${link(operator.privacyUrl, 'privacy notice')}.</p>`
+            : '';
+    return `${agree}<p class="hint">Run by ${link(operator.url, operator.name)}. An independent service, not affiliated with Toshl or Anthropic.</p>`;
 }
 
 /**
@@ -143,7 +162,7 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
     }
     if (locked) {
         parts.push(
-            `<p class="error">Too many wrong passphrases. Sign-in is paused for ` +
+            `<p class="error">Too many failed sign-ins. Sign-in is paused for ` +
                 `${Math.ceil((options.retryAfterSeconds as number) / 60)} more minute(s).</p>`
         );
     } else if (options.error) {
@@ -151,9 +170,7 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
     }
 
     if (options.personalToken) {
-        if (options.error) {
-            parts.push(`<p class="error">${escapeHtml(options.error)}</p>`);
-        }
+        // The error or lockout notice was already added above.
         const locked = (options.retryAfterSeconds ?? 0) > 0;
         parts.push(`<p>Continue only if you started this from your own Claude.</p>
 <ol>
@@ -171,7 +188,7 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
 <button type="submit" name="action" value="approve" class="primary"${locked ? ' disabled' : ''}>Connect</button>
 <button type="submit" name="action" value="deny" formnovalidate>Cancel</button>
 </div>
-</form>`);
+</form>${operatorFooter(options.operator)}`);
         sendPage(res, status, 'Connect to Toshl', parts.join('\n'), [redirect.origin], nonce);
         return;
     }
@@ -186,7 +203,7 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
 <button type="submit" name="action" value="approve" class="primary" autofocus>Continue to Toshl</button>
 <button type="submit" name="action" value="deny">Cancel</button>
 </div>
-</form>`);
+</form>${operatorFooter(options.operator)}`);
         sendPage(res, status, 'Connect to Toshl', parts.join('\n'), [redirect.origin, options.toshlOrigin], nonce);
         return;
     }

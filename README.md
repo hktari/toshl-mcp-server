@@ -197,6 +197,7 @@ on "Use Claude's published identity".
 | `MCP_OAUTH_SIGNING_KEY_PREVIOUS` | Optional. A retired key that still verifies, for rotation without signing everyone out |
 | `MCP_OAUTH_STATE_DIR` | Where refresh-token hashes are kept. Must survive restarts (`/app/state` in the image) |
 | `MCP_TRUST_PROXY` | `true` to rate-limit by the client address the proxy appends to `X-Forwarded-For`. Turn it on behind a proxy, where otherwise every client shares the proxy's address and one IP's lockout locks out everyone. Leave it off when clients can reach the port directly, because they could then forge the header |
+| `MCP_CLIENT_IP_HEADER` | A header the proxy in front **overwrites** with the client address, e.g. `x-real-ip` on Railway. Used for rate limiting instead of the last `X-Forwarded-For` entry, which behind Railway is one of Railway's own hops and changes per request. Needs `MCP_TRUST_PROXY=true` |
 
 OAuth turns on when the passphrase and signing key are set. It works alongside
 `MCP_AUTH_TOKEN`, so Claude Code or a script can keep using a static token.
@@ -262,6 +263,13 @@ that user, and everything else works as in Sign in with Toshl: per-user requests
 sessions. Wrong tokens count towards the sign-in lockout. Deleting the token in Toshl disconnects
 the user; Claude then asks them to connect again. Each connection is logged with the number of
 connected users.
+
+### Operator, terms and privacy (hosted instances)
+
+A server that holds other people's financial data should say who runs it. Set `MCP_OPERATOR_NAME`
+(and optionally `MCP_OPERATOR_URL`, `MCP_TERMS_URL`, `MCP_PRIVACY_URL`, all https) and the consent
+page shows "Run by …", states that the service is independent of Toshl and Anthropic, and that
+connecting means agreeing to the terms of use.
 
 ### Sessions
 

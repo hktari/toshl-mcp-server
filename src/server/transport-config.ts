@@ -26,6 +26,12 @@ export interface OAuthConfig {
      * personal token on the consent page, for when no Toshl OAuth app is available.
      */
     personalTokens?: boolean;
+    /**
+     * Who runs a hosted instance, shown on the consent page with links to its terms and
+     * privacy notice (MCP_OPERATOR_NAME, MCP_OPERATOR_URL, MCP_TERMS_URL, MCP_PRIVACY_URL).
+     * Connecting then means agreeing to the terms.
+     */
+    operator?: { name: string; url?: string; termsUrl?: string; privacyUrl?: string };
     /** Signs access tokens and sign-in forms. Never logged. */
     signingKey: string;
     /** Still accepted for verification while rotating `signingKey`. */
@@ -49,6 +55,11 @@ export interface HttpTransportConfig {
     allowNoAuth: boolean;
     /** Take the client IP from the last X-Forwarded-For entry, for sign-in rate limiting. */
     trustProxy: boolean;
+    /**
+     * MCP_CLIENT_IP_HEADER, e.g. `x-real-ip`: a header the proxy in front overwrites with the
+     * client address. Used instead of the last X-Forwarded-For entry; only with MCP_TRUST_PROXY.
+     */
+    clientIpHeader?: string;
     /** Host header names accepted besides loopback, e.g. the reverse proxy's public name. */
     allowedHosts: string[];
     /** Origins (`scheme://host[:port]`) accepted on `/mcp`. Requests without Origin are always accepted. */
@@ -127,6 +138,7 @@ export function loadTransportConfig(env: NodeJS.ProcessEnv = process.env): Trans
             oauth,
             allowNoAuth,
             trustProxy: isTrue(env.MCP_TRUST_PROXY),
+            ...loadClientIpHeader(env),
             allowedHosts,
             allowedOrigins,
         },
@@ -194,9 +206,39 @@ function loadOAuthConfig(env: NodeJS.ProcessEnv): OAuthConfig | undefined {
         passphrase,
         toshl,
         ...(personalTokens ? { personalTokens } : {}),
+        ...loadOperator(env),
         signingKey: signingKey as string,
         previousSigningKey,
         stateDir,
+    };
+}
+
+/**
+ * Reads the operator shown on the consent page
+ * @returns The operator, when MCP_OPERATOR_NAME is set
+ */
+function loadOperator(env: NodeJS.ProcessEnv): { operator?: NonNullable<OAuthConfig['operator']> } {
+    const name = env.MCP_OPERATOR_NAME?.trim();
+    if (!name) {
+        return {};
+    }
+    const link = (key: string): string | undefined => {
+        const value = env[key]?.trim();
+        if (!value) {
+            return undefined;
+        }
+        if (!/^https:\/\/\S+$/.test(value)) {
+            throw new Error(`${key} must be an https URL`);
+        }
+        return value;
+    };
+    return {
+        operator: {
+            name,
+            url: link('MCP_OPERATOR_URL'),
+            termsUrl: link('MCP_TERMS_URL'),
+            privacyUrl: link('MCP_PRIVACY_URL'),
+        },
     };
 }
 
@@ -239,6 +281,24 @@ function parsePublicUrl(value: string | undefined): string {
     }
 
     return url.origin;
+}
+
+/**
+ * Reads MCP_CLIENT_IP_HEADER. A client can send any header, so it is trusted only when the
+ * operator says a proxy overwrites it (MCP_TRUST_PROXY=true).
+ */
+function loadClientIpHeader(env: NodeJS.ProcessEnv): { clientIpHeader?: string } {
+    const header = env.MCP_CLIENT_IP_HEADER?.trim().toLowerCase();
+    if (!header) {
+        return {};
+    }
+    if (!isTrue(env.MCP_TRUST_PROXY)) {
+        throw new Error('MCP_CLIENT_IP_HEADER needs MCP_TRUST_PROXY=true: only a proxy that overwrites it makes it trustworthy');
+    }
+    if (!/^[a-z0-9-]{1,64}$/.test(header)) {
+        throw new Error(`MCP_CLIENT_IP_HEADER must be a header name, got "${header}"`);
+    }
+    return { clientIpHeader: header };
 }
 
 /**

@@ -19,6 +19,19 @@ export interface LockoutPolicy {
     globalLockoutMs: number;
 }
 
+/**
+ * Personal-token mode: per-IP only. A pasted token is checked by Toshl, so there is no shared
+ * secret for a global lockout to protect, and one would let anyone close sign-in for everyone.
+ */
+export const PERSONAL_TOKEN_LOCKOUT_POLICY: LockoutPolicy = {
+    ipMaxFailures: 10,
+    ipWindowMs: 15 * MINUTE,
+    ipLockoutMs: 15 * MINUTE,
+    globalMaxFailures: Number.POSITIVE_INFINITY,
+    globalWindowMs: 60 * MINUTE,
+    globalLockoutMs: 0,
+};
+
 export const DEFAULT_LOCKOUT_POLICY: LockoutPolicy = {
     ipMaxFailures: 5,
     ipWindowMs: 15 * MINUTE,
@@ -160,7 +173,8 @@ export class RequestLimiter {
 
 /**
  * Turns a client address into a rate-limit key. IPv4 addresses are used whole; IPv6
- * addresses are cut to their /64, since one subscriber typically holds a whole /64 and
+ * addresses are cut to their /48, since one subscriber can hold a whole /48 (a free tunnel
+ * broker hands one out) and
  * could otherwise rotate through addresses to dodge per-IP limits.
  * @param address Address from the socket or X-Forwarded-For
  * @returns The key, or undefined when the value is not an IP address
@@ -202,7 +216,7 @@ export function rateLimitKey(address: string | undefined): string | undefined {
     }
 
     return `${groups
-        .slice(0, 4)
+        .slice(0, 3)
         .map((group) => parseInt(group, 16).toString(16))
-        .join(':')}::/64`;
+        .join(':')}::/48`;
 }
