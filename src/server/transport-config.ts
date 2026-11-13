@@ -26,14 +26,6 @@ export interface OAuthConfig {
      * personal token on the consent page, for when no Toshl OAuth app is available.
      */
     personalTokens?: boolean;
-    /** STRIPE_*: a one-time payment before a user's first connection (personal-token mode). */
-    paywall?: {
-        stripeKey: string;
-        paymentLinkUrl: string;
-        paymentLinkId: string;
-        freeUserIds: string[];
-        stripeApiBase?: string;
-    };
     /** Signs access tokens and sign-in forms. Never logged. */
     signingKey: string;
     /** Still accepted for verification while rotating `signingKey`. */
@@ -202,37 +194,10 @@ function loadOAuthConfig(env: NodeJS.ProcessEnv): OAuthConfig | undefined {
         passphrase,
         toshl,
         ...(personalTokens ? { personalTokens } : {}),
-        ...loadPaywall(env, personalTokens),
         signingKey: signingKey as string,
         previousSigningKey,
         stateDir,
     };
-}
-
-/**
- * Reads the paywall settings: STRIPE_SECRET_KEY, STRIPE_PAYMENT_LINK_URL, STRIPE_PAYMENT_LINK_ID
- * (all or none) and PAYWALL_FREE_USER_IDS
- */
-function loadPaywall(env: NodeJS.ProcessEnv, personalTokens: boolean): { paywall?: NonNullable<OAuthConfig['paywall']> } {
-    const stripeKey = env.STRIPE_SECRET_KEY?.trim() || undefined;
-    const paymentLinkUrl = env.STRIPE_PAYMENT_LINK_URL?.trim() || undefined;
-    const paymentLinkId = env.STRIPE_PAYMENT_LINK_ID?.trim() || undefined;
-    if (!stripeKey && !paymentLinkUrl && !paymentLinkId) {
-        return {};
-    }
-    if (!stripeKey || !paymentLinkUrl || !paymentLinkId) {
-        throw new Error('Set all of STRIPE_SECRET_KEY, STRIPE_PAYMENT_LINK_URL and STRIPE_PAYMENT_LINK_ID for the paywall');
-    }
-    if (!personalTokens) {
-        throw new Error('The paywall works with MCP_SIGN_IN=personal-token only');
-    }
-    if (!/^https:\/\/\S+$/.test(paymentLinkUrl)) {
-        throw new Error('STRIPE_PAYMENT_LINK_URL must be an https URL');
-    }
-    if (!/^plink_[A-Za-z0-9]+$/.test(paymentLinkId)) {
-        throw new Error('STRIPE_PAYMENT_LINK_ID must look like plink_...');
-    }
-    return { paywall: { stripeKey, paymentLinkUrl, paymentLinkId, freeUserIds: splitList(env.PAYWALL_FREE_USER_IDS) } };
 }
 
 /**

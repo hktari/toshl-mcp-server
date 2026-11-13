@@ -4,8 +4,7 @@ import logger from '../../utils/logger.js';
 import { OAuthConfig } from '../transport-config.js';
 import { findClient, isRegisteredRedirectUri, OAuthClient } from './clients.js';
 import { deriveKey, randomToken, safeEqual, sha256, signPayload, verifyPayload } from './crypto.js';
-import { sendErrorPage, sendPaywallPage, sendSignInPage } from './page.js';
-import { Paywall } from './paywall.js';
+import { sendErrorPage, sendSignInPage } from './page.js';
 import { rateLimitKey, RequestLimiter, SignInLimiter } from './rate-limit.js';
 import { RefreshTokenStore } from './refresh-store.js';
 import {
@@ -21,8 +20,6 @@ import {
 /** How the users of a multi-user server prove who they are to Toshl. */
 interface ToshlMode {
     tokens: ToshlTokenStore;
-    /** One-time payment before the first connection; personal-token mode only. */
-    paywall?: Paywall;
     /** Sign in with Toshl (OAuth). Undefined in personal-token mode. */
     client?: ToshlOAuthClient;
 }
@@ -258,8 +255,7 @@ export class OAuthServer {
         let toshl: ToshlMode | undefined;
         if (config.personalTokens) {
             const tokens = await ToshlTokenStore.open(config.stateDir, config.signingKey, config.previousSigningKey, undefined);
-            const paywall = config.paywall ? await Paywall.open(config.paywall, config.stateDir) : undefined;
-            toshl = { tokens, paywall };
+            toshl = { tokens };
         } else if (config.toshl) {
             const client = new ToshlOAuthClient(
                 config.toshl,
@@ -644,12 +640,7 @@ export class OAuthServer {
             return;
         }
         if (this.toshl) {
-            const waiting = form.get('continue_as');
-            if (waiting) {
-                await this.paywallContinue(res, client, request, waiting);
-            } else {
-                await this.personalTokenSignIn(res, ip, client, request, form.get('toshl_token') ?? '');
-            }
+            await this.personalTokenSignIn(res, ip, client, request, form.get('toshl_token') ?? '');
             return;
         }
 
@@ -811,12 +802,11 @@ export class OAuthServer {
 
         const token = pasted.trim();
         let userId: string;
-        let email: string | undefined;
         try {
             if (!/^[\x21-\x7e]{6,512}$/.test(token)) {
                 throw new InvalidPersonalTokenError('Not a token');
             }
-            ({ id: userId, email } = await personalTokenUserId(token));
+            userId = await personalTokenUserId(token);
         } catch (error) {
             if (error instanceof InvalidPersonalTokenError) {
                 this.signInLimiter.recordFailure(ip);
@@ -838,84 +828,8 @@ export class OAuthServer {
         await tokens.save(userId, personalTokenRecord(token));
         // The interest signal: one line per connection, with how many people are connected.
         logger.info('User connected with a personal token', { clientId: client.clientId, newUser: isNew, users: tokens.size });
-
-        const paywall = (this.toshl as ToshlMode).paywall;
-        if (paywall && !(await paywall.hasPaid(userId, email))) {
-            // The token is kept, so after paying the user only clicks Continue.
-            logger.info('Paywall shown', { clientId: client.clientId });
-            this.showPaywall(res, 402, request, userId, email);
-            return;
-        }
         const code = this.createCode({ ...request, sub: userId });
         this.redirectWithParams(res, request.redirectUri, { code, state: request.state });
-    }
-
-    /** After paying, Continue: the signed user id from the paywall page, checked again with Stripe. */
-    private async paywallContinue(res: ServerResponse, client: OAuthClient, request: AuthorizationRequest, waiting: string) {
-        const toshl = this.toshl as ToshlMode;
-        const claims = verifyPayload(this.formKeys, waiting);
-        if (
-            !claims ||
-            claims.typ !== 'paywall' ||
-            typeof claims.exp !== 'number' ||
-            claims.exp <= Date.now() ||
-            typeof claims.sub !== 'string' ||
-            claims.client_id !== request.clientId ||
-            claims.redirect_uri !== request.redirectUri
-        ) {
-            sendErrorPage(res, 400, 'This page has expired. Go back to Claude and connect again.');
-            return;
-        }
-        const userId = claims.sub;
-        const email = typeof claims.email === 'string' ? claims.email : undefined;
-        if (!toshl.tokens.has(userId)) {
-            sendErrorPage(res, 400, 'Your Toshl token is no longer stored. Go back to Claude and connect again.');
-            return;
-        }
-        if (toshl.paywall && !(await toshl.paywall.hasPaid(userId, email))) {
-            this.showPaywall(res, 402, request, userId, email, 'No payment found yet. If you just paid, wait a few seconds and click Continue again.');
-            return;
-        }
-        logger.info('Paid user connected', { clientId: client.clientId });
-        const code = this.createCode({ ...request, sub: userId });
-        this.redirectWithParams(res, request.redirectUri, { code, state: request.state });
-    }
-
-    private showPaywall(
-        res: ServerResponse,
-        status: number,
-        request: AuthorizationRequest,
-        userId: string,
-        email: string | undefined,
-        error?: string
-    ) {
-        const paywall = (this.toshl as ToshlMode).paywall as Paywall;
-        const exp = Date.now() + 60 * 60 * 1000;
-        const formToken = signPayload(this.formKeys[0], {
-            typ: 'sign-in',
-            client_id: request.clientId,
-            redirect_uri: request.redirectUri,
-            code_challenge: request.codeChallenge,
-            scope: request.scope,
-            state: request.state,
-            exp,
-        });
-        const continueToken = signPayload(this.formKeys[0], {
-            typ: 'paywall',
-            sub: userId,
-            email,
-            client_id: request.clientId,
-            redirect_uri: request.redirectUri,
-            exp,
-        });
-        sendPaywallPage(res, status, {
-            checkoutUrl: paywall.checkoutUrl(userId, email),
-            formToken,
-            continueToken,
-            redirectUri: request.redirectUri,
-            email,
-            error,
-        });
     }
 
     private showSignIn(
