@@ -594,3 +594,100 @@ describe('Personal-token sign-in', () => {
         expect(() => loadTransportConfig({ ...env, TOSHL_OAUTH_CLIENT_ID: 'a', TOSHL_OAUTH_CLIENT_SECRET: 'b' })).toThrow(/Choose one/);
     });
 });
+
+describe('Security fixes (2026-11-13 review)', () => {
+    async function startTokenServer(extra: { trustProxy?: boolean; clientIpHeader?: string } = {}) {
+        await running.close();
+        running = await startHttpServer({
+            host: '127.0.0.1',
+            port: 0,
+            oauth: { publicUrl: ISSUER, signingKey: SIGNING_KEY, stateDir, personalTokens: true },
+            allowNoAuth: false,
+            trustProxy: extra.trustProxy ?? false,
+            ...(extra.clientIpHeader ? { clientIpHeader: extra.clientIpHeader } : {}),
+            allowedHosts: ['example.com'],
+            allowedOrigins: [],
+        });
+    }
+
+    /** Pastes a token as a visitor whose real address (per X-Real-IP) is `ip`, behind a varying proxy hop. */
+    async function paste(token: string, ip: string) {
+        const headers = { 'X-Real-IP': ip, 'X-Forwarded-For': `${ip}, 100.64.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` };
+        const pkce = newPkce();
+        const page = await send(running.port, 'GET', authorizePath(pkce.challenge), { headers });
+        const res = await send(running.port, 'POST', '/oauth/authorize', {
+            headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', Origin: ISSUER },
+            body: new URLSearchParams({ request: formToken(page.body), action: 'approve', toshl_token: token }).toString(),
+        });
+        return { pkce, res };
+    }
+
+    test('H1: wrong tokens from one address lock only that address, never everyone', async () => {
+        await startTokenServer({ trustProxy: true, clientIpHeader: 'x-real-ip' });
+        const statuses: number[] = [];
+        for (let i = 0; i < 25; i++) statuses.push((await paste('pat-nobody-wrong', '203.0.113.7')).res.status);
+        expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
+        expect(statuses.slice(10).every((s) => s === 429)).toBe(true);
+        // Someone else is not affected.
+        expect((await paste('pat-alice', '198.51.100.9')).res.status).toBe(303);
+    });
+
+    test('H1: malformed tokens are refused without counting toward any lockout', async () => {
+        await startTokenServer({ trustProxy: true, clientIpHeader: 'x-real-ip' });
+        // 25 rounds: 50 requests, under the 60-per-minute page limit for one address.
+        for (let i = 0; i < 25; i++) expect((await paste('x', '203.0.113.8')).res.status).toBe(400);
+        expect((await paste('pat-alice', '203.0.113.8')).res.status).toBe(303);
+    });
+
+    test('H2: the client IP header is trusted only with MCP_TRUST_PROXY', () => {
+        const env = { MCP_TRANSPORT: 'http', MCP_PUBLIC_URL: ISSUER, MCP_OAUTH_SIGNING_KEY: SIGNING_KEY, MCP_OAUTH_STATE_DIR: '/tmp/x', MCP_SIGN_IN: 'personal-token' };
+        expect(() => loadTransportConfig({ ...env, MCP_CLIENT_IP_HEADER: 'X-Real-IP' })).toThrow(/MCP_TRUST_PROXY/);
+        const config = loadTransportConfig({ ...env, MCP_CLIENT_IP_HEADER: 'X-Real-IP', MCP_TRUST_PROXY: 'true' });
+        expect(config.transport === 'http' && config.http.clientIpHeader).toBe('x-real-ip');
+    });
+
+    test('M2: a 401 for credentials already replaced, or a 401 /me does not confirm, keeps the token', async () => {
+        await startTokenServer();
+        const { ToshlTokenStore, personalTokenRecord, basicAuthorization } = await import('../../src/server/oauth/toshl-auth.js');
+        const dir = await mkdtemp(join(tmpdir(), 'toshl-revoke-'));
+        const store = await ToshlTokenStore.open(dir, SIGNING_KEY, undefined, undefined);
+        await store.save('id-alice', personalTokenRecord('pat-alice'));
+        // A stale request on an older token failed: the stored, newer token stays.
+        expect(await store.handleUnauthorized('id-alice', basicAuthorization('pat-alice-old'))).toBe(false);
+        expect(store.has('id-alice')).toBe(true);
+        // A 401 on the current token while Toshl's /me still accepts it: a glitch, keep it.
+        expect(await store.handleUnauthorized('id-alice', basicAuthorization('pat-alice'))).toBe(false);
+        expect(store.has('id-alice')).toBe(true);
+        // Really revoked at Toshl: removed.
+        toshl.revoked.add('alice');
+        expect(await store.handleUnauthorized('id-alice', basicAuthorization('pat-alice'))).toBe(true);
+        expect(store.has('id-alice')).toBe(false);
+        await rm(dir, { recursive: true, force: true });
+    });
+
+    test('M3: an eleventh session closes the same user\'s oldest one', async () => {
+        await startTokenServer();
+        const { pkce, res } = await paste('pat-alice', '198.51.100.10');
+        const code = new URL(res.headers.location as string).searchParams.get('code') as string;
+        const tokenRes = await send(running.port, 'POST', '/oauth/token', {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: CLAUDE_CALLBACK, client_id: CLAUDE_CLIENT.clientId, code_verifier: pkce.verifier, resource: RESOURCE }).toString(),
+        });
+        const { access_token } = JSON.parse(tokenRes.body);
+        const first = await openSession(access_token);
+        for (let i = 0; i < 10; i++) await openSession(access_token);
+        expect((await callTool(access_token, first, 'account_list')).status).toBe(404);
+    });
+
+    test('M3: sign-ins kept per user are capped', async () => {
+        const { RefreshTokenStore } = await import('../../src/server/oauth/refresh-store.js');
+        const dir = await mkdtemp(join(tmpdir(), 'toshl-families-'));
+        const store = await RefreshTokenStore.open(dir);
+        for (let i = 0; i < 25; i++) {
+            await store.trimFamilies('id-alice', 20);
+            await store.issue({ clientId: 'c', scope: 'toshl', resource: RESOURCE, sub: 'id-alice' });
+        }
+        expect(store.size).toBe(20);
+        await rm(dir, { recursive: true, force: true });
+    });
+});

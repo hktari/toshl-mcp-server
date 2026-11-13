@@ -162,7 +162,7 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
     }
     if (locked) {
         parts.push(
-            `<p class="error">Too many wrong passphrases. Sign-in is paused for ` +
+            `<p class="error">Too many failed sign-ins. Sign-in is paused for ` +
                 `${Math.ceil((options.retryAfterSeconds as number) / 60)} more minute(s).</p>`
         );
     } else if (options.error) {
@@ -170,9 +170,7 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
     }
 
     if (options.personalToken) {
-        if (options.error) {
-            parts.push(`<p class="error">${escapeHtml(options.error)}</p>`);
-        }
+        // The error or lockout notice was already added above.
         const locked = (options.retryAfterSeconds ?? 0) > 0;
         parts.push(`<p>Continue only if you started this from your own Claude.</p>
 <ol>
