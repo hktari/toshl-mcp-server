@@ -25,6 +25,8 @@ export interface RefreshGrant {
     scope: string;
     resource: string;
     familyCreatedAt: number;
+    /** Toshl user id in Sign in with Toshl mode; absent for the single owner. */
+    sub?: string;
 }
 
 interface RefreshRecord extends RefreshGrant {
@@ -167,6 +169,7 @@ export class RefreshTokenStore {
             scope: record.scope,
             resource: record.resource,
             familyCreatedAt: record.familyCreatedAt,
+            ...(record.sub !== undefined ? { sub: record.sub } : {}),
         };
         const next = this.add(grant, now);
 

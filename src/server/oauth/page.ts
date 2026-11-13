@@ -29,6 +29,9 @@ p { margin: 0 0 1rem; }
 .warn { background: #fef3c7; border-radius: 8px; padding: .75rem; }
 .error { background: #fee2e2; border-radius: 8px; padding: .75rem; }
 label { display: block; font-weight: 600; margin-bottom: .25rem; }
+.hint { font-size: .875rem; color: #52525b; }
+ol { padding-left: 1.25rem; margin: 0 0 1rem; } li { margin-bottom: .25rem; }
+a { color: inherit; }
 input[type=password] { box-sizing: border-box; width: 100%; padding: .6rem; font-size: 1rem;
        border: 1px solid #a1a1aa; border-radius: 8px; margin-bottom: 1rem; }
 /* Approve comes first in the markup so Enter submits it; this puts Cancel on the left. */
@@ -106,6 +109,13 @@ export interface SignInPageOptions {
     error?: string;
     /** Disables the form while sign-in is locked out. */
     retryAfterSeconds?: number;
+    /**
+     * Sign in with Toshl: no passphrase field; approving continues to Toshl's sign-in at this
+     * origin, which the page's form-action must then allow.
+     */
+    toshlOrigin?: string;
+    /** Personal-token sign-in: a field for the user's Toshl personal token. */
+    personalToken?: boolean;
 }
 
 /**
@@ -138,6 +148,46 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
         );
     } else if (options.error) {
         parts.push(`<p class="error">${escapeHtml(options.error)}</p>`);
+    }
+
+    if (options.personalToken) {
+        if (options.error) {
+            parts.push(`<p class="error">${escapeHtml(options.error)}</p>`);
+        }
+        const locked = (options.retryAfterSeconds ?? 0) > 0;
+        parts.push(`<p>Continue only if you started this from your own Claude.</p>
+<ol>
+<li>Open <a href="https://developer.toshl.com/apps/" target="_blank" rel="noopener noreferrer">developer.toshl.com/apps</a> and sign in with your Toshl account.</li>
+<li>Create a <strong>personal token</strong>. Toshl asks for your Toshl password to confirm.</li>
+<li>Copy the token and paste it below.</li>
+</ol>
+<form method="post" action="/oauth/authorize">
+<input type="hidden" name="request" value="${escapeHtml(options.formToken)}">
+<label for="toshl_token">Toshl personal token</label>
+<input type="password" id="toshl_token" name="toshl_token" autocomplete="off" required${locked ? ' disabled' : ' autofocus'}>
+<p class="hint">Stored encrypted and used only to answer you in Claude. Delete the token in Toshl at any time to disconnect.</p>
+<div class="actions">
+<button type="submit" name="action" value="approve" class="primary"${locked ? ' disabled' : ''}>Connect</button>
+<button type="submit" name="action" value="deny" formnovalidate>Cancel</button>
+</div>
+</form>`);
+        sendPage(res, status, 'Connect to Toshl', parts.join('\n'), [redirect.origin], nonce);
+        return;
+    }
+
+    if (options.toshlOrigin) {
+        // Our own consent step: without it, a link to the authorize URL could connect someone
+        // else's Claude to the visitor's Toshl in one click, if Toshl re-approves silently.
+        parts.push(`<p>Continue only if you started this from your own Claude. Next, you sign in to Toshl.</p>
+<form method="post" action="/oauth/authorize">
+<input type="hidden" name="request" value="${escapeHtml(options.formToken)}">
+<div class="actions">
+<button type="submit" name="action" value="approve" class="primary" autofocus>Continue to Toshl</button>
+<button type="submit" name="action" value="deny">Cancel</button>
+</div>
+</form>`);
+        sendPage(res, status, 'Connect to Toshl', parts.join('\n'), [redirect.origin, options.toshlOrigin], nonce);
+        return;
     }
 
     parts.push(`<form method="post" action="/oauth/authorize">

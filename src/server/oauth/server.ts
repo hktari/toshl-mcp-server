@@ -7,6 +7,23 @@ import { deriveKey, randomToken, safeEqual, sha256, signPayload, verifyPayload }
 import { sendErrorPage, sendSignInPage } from './page.js';
 import { rateLimitKey, RequestLimiter, SignInLimiter } from './rate-limit.js';
 import { RefreshTokenStore } from './refresh-store.js';
+import {
+    InvalidPersonalTokenError,
+    personalTokenRecord,
+    personalTokenUserId,
+    TOSHL_AUTHORIZE_URL,
+    TOSHL_TOKEN_URL,
+    ToshlOAuthClient,
+    ToshlTokenStore,
+} from './toshl-auth.js';
+
+/** How the users of a multi-user server prove who they are to Toshl. */
+interface ToshlMode {
+    tokens: ToshlTokenStore;
+    /** Sign in with Toshl (OAuth). Undefined in personal-token mode. */
+    client?: ToshlOAuthClient;
+}
+import { RequestUser } from '../request-context.js';
 
 /** Access tokens are stateless, so this is also how long one outlives a revocation. */
 export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
@@ -26,6 +43,17 @@ export const SCOPE = 'toshl';
 /** Accepted when requested, and ignored: refresh tokens are always issued. */
 const IGNORED_SCOPES = new Set(['offline_access']);
 
+/** How long a trip to Toshl's sign-in page may take before the user has to start over. */
+export const TOSHL_SIGN_IN_TTL_MS = 10 * 60 * 1000;
+
+/** Binds a Toshl sign-in to the browser that started it, so a stolen state value is useless. */
+const SIGN_IN_COOKIE = '__Host-toshl_sign_in';
+
+const MAX_PENDING_TOSHL_SIGN_INS = 1000;
+
+/** The subject of tokens issued in single-user mode. */
+const OWNER = 'owner';
+
 const MAX_FORM_BYTES = 16 * 1024;
 const MAX_PENDING_CODES = 100;
 
@@ -41,6 +69,7 @@ const OAUTH_PATHS = new Set([
     '/oauth/authorize',
     '/oauth/token',
     '/oauth/revoke',
+    '/oauth/toshl/callback',
 ]);
 
 interface AuthorizationRequest {
@@ -49,6 +78,16 @@ interface AuthorizationRequest {
     codeChallenge: string;
     scope: string;
     state?: string;
+    /** Who signed in: a Toshl user id, or the owner in single-user mode. */
+    sub?: string;
+}
+
+interface PendingToshlSignIn {
+    request: AuthorizationRequest;
+    clientName: string;
+    expiresAt: number;
+    /** SHA-256 of the cookie value set on the browser that started this sign-in. */
+    browser: string;
 }
 
 interface PendingCode extends AuthorizationRequest {
@@ -62,6 +101,22 @@ interface PendingCode extends AuthorizationRequest {
 }
 
 class FormTooLargeError extends Error {}
+
+/**
+ * Reads one cookie from the request
+ * @param req HTTP request
+ * @param name Cookie name
+ * @returns Its value, or undefined
+ */
+function readCookie(req: IncomingMessage, name: string): string | undefined {
+    for (const part of (req.headers.cookie ?? '').split(';')) {
+        const index = part.indexOf('=');
+        if (index > 0 && part.slice(0, index).trim() === name) {
+            return part.slice(index + 1).trim();
+        }
+    }
+    return undefined;
+}
 
 /**
  * Reads a request body up to a limit
@@ -169,6 +224,7 @@ export class OAuthServer {
     private readonly formKeys: Buffer[];
     private readonly compareKey: Buffer;
     private readonly codes = new Map<string, PendingCode>();
+    private readonly toshlSignIns = new Map<string, PendingToshlSignIn>();
     private readonly signInLimiter = new SignInLimiter();
     private readonly tokenLimiter = new RequestLimiter(30);
     private readonly authorizeLimiter = new RequestLimiter(60);
@@ -176,7 +232,8 @@ export class OAuthServer {
     private constructor(
         private readonly config: OAuthConfig,
         private readonly trustProxy: boolean,
-        private readonly store: RefreshTokenStore
+        private readonly store: RefreshTokenStore,
+        private readonly toshl?: ToshlMode
     ) {
         this.issuer = config.publicUrl;
         this.resource = `${config.publicUrl}/mcp`;
@@ -195,8 +252,53 @@ export class OAuthServer {
      */
     static async create(config: OAuthConfig, trustProxy: boolean): Promise<OAuthServer> {
         const store = await RefreshTokenStore.open(config.stateDir);
-        logger.info('OAuth enabled', { issuer: config.publicUrl, storedRefreshTokens: store.size });
-        return new OAuthServer(config, trustProxy, store);
+        let toshl: ToshlMode | undefined;
+        if (config.personalTokens) {
+            const tokens = await ToshlTokenStore.open(config.stateDir, config.signingKey, config.previousSigningKey, undefined);
+            toshl = { tokens };
+        } else if (config.toshl) {
+            const client = new ToshlOAuthClient(
+                config.toshl,
+                undefined,
+                config.toshl.tokenUrl ?? TOSHL_TOKEN_URL,
+                config.toshl.authorizeUrl ?? TOSHL_AUTHORIZE_URL
+            );
+            const tokens = await ToshlTokenStore.open(config.stateDir, config.signingKey, config.previousSigningKey, client);
+            toshl = { client, tokens };
+        }
+        logger.info('OAuth enabled', {
+            issuer: config.publicUrl,
+            signIn: config.personalTokens ? 'personal-token' : toshl ? 'toshl' : 'passphrase',
+            storedRefreshTokens: store.size,
+        });
+        return new OAuthServer(config, trustProxy, store, toshl);
+    }
+
+    /** Whether each user signs in with their own Toshl account (multi-user mode) */
+    get multiUser(): boolean {
+        return this.toshl !== undefined;
+    }
+
+    /**
+     * The request user for a token subject in multi-user mode
+     * @param sub Subject from a verified access token
+     * @returns The user, or undefined when they are no longer connected to Toshl
+     */
+    toshlUser(sub: string): RequestUser | undefined {
+        if (!this.toshl || !this.toshl.tokens.has(sub)) {
+            return undefined;
+        }
+        const tokens = this.toshl.tokens;
+        return {
+            userId: sub,
+            getAuthorization: () => tokens.authorization(sub),
+            revoke: async () => {
+                if (tokens.has(sub)) {
+                    logger.info('Toshl refused a user\'s credentials; disconnected them');
+                    await tokens.remove(sub);
+                }
+            },
+        };
     }
 
     /**
@@ -229,8 +331,17 @@ export class OAuthServer {
      * @returns Whether it grants access
      */
     verifyAccessToken(token: string): boolean {
+        return this.accessTokenSubject(token) !== undefined;
+    }
+
+    /**
+     * Checks an access token like verifyAccessToken and says whose it is
+     * @param token Bearer token
+     * @returns The subject (a Toshl user id, or "owner"), or undefined when it grants nothing
+     */
+    accessTokenSubject(token: string): string | undefined {
         const claims = verifyPayload(this.accessKeys, token);
-        return (
+        const valid =
             claims !== undefined &&
             claims.typ === 'access' &&
             claims.iss === this.issuer &&
@@ -238,8 +349,18 @@ export class OAuthServer {
             typeof claims.exp === 'number' &&
             claims.exp > Math.floor(Date.now() / 1000) &&
             typeof claims.scope === 'string' &&
-            claims.scope.split(' ').includes(SCOPE)
-        );
+            claims.scope.split(' ').includes(SCOPE) &&
+            (claims.sub === undefined || typeof claims.sub === 'string');
+        if (!valid) {
+            return undefined;
+        }
+        // Tokens have always named their subject; a missing one can only mean the single owner.
+        const sub = (claims.sub as string | undefined) ?? OWNER;
+        // A single-user token can't open a multi-user server, and the other way round.
+        if (this.multiUser === (sub === OWNER)) {
+            return undefined;
+        }
+        return sub;
     }
 
     /**
@@ -261,6 +382,15 @@ export class OAuthServer {
                     ? this.authorizationServerMetadata()
                     : this.protectedResourceMetadata()
             );
+            return;
+        }
+
+        if (path === '/oauth/toshl/callback') {
+            if (req.method === 'GET' && this.toshl?.client) {
+                await this.toshlCallback(req, res);
+            } else {
+                sendErrorPage(res, 404, 'Not found.');
+            }
             return;
         }
 
@@ -504,13 +634,23 @@ export class OAuthServer {
             return;
         }
 
+        if (this.toshl?.client) {
+            // Consent given on our page; the Toshl sign-in is the authentication.
+            this.startToshlSignIn(res, client, request);
+            return;
+        }
+        if (this.toshl) {
+            await this.personalTokenSignIn(res, ip, client, request, form.get('toshl_token') ?? '');
+            return;
+        }
+
         const retryAfterSeconds = this.signInLimiter.retryAfterSeconds(ip);
         if (retryAfterSeconds > 0) {
             this.showSignIn(res, 429, client, request, { retryAfterSeconds }, { 'Retry-After': String(retryAfterSeconds) });
             return;
         }
 
-        if (!safeEqual(this.compareKey, form.get('passphrase') ?? '', this.config.passphrase)) {
+        if (!safeEqual(this.compareKey, form.get('passphrase') ?? '', this.config.passphrase ?? '')) {
             const { ipLocked, globalLocked } = this.signInLimiter.recordFailure(ip);
             logger.warn('OAuth sign-in failed: wrong passphrase', { clientId: client.clientId, ip });
             if (ipLocked || globalLocked) {
@@ -525,8 +665,170 @@ export class OAuthServer {
         }
 
         this.signInLimiter.recordSuccess(ip);
-        const code = this.createCode(request);
+        const code = this.createCode({ ...request, sub: OWNER });
         logger.info('OAuth sign-in approved', { clientId: client.clientId, ip });
+        this.redirectWithParams(res, request.redirectUri, { code, state: request.state });
+    }
+
+    /**
+     * Sends the browser to Toshl's sign-in. The validated request waits here, keyed by a random
+     * state (Toshl cuts state at 255 characters, too short to carry the request signed), and is
+     * tied to this browser by a cookie.
+     */
+    private startToshlSignIn(res: ServerResponse, client: OAuthClient, request: AuthorizationRequest) {
+        const toshl = this.toshl as Required<ToshlMode>;
+        const now = Date.now();
+        for (const [key, pending] of this.toshlSignIns) {
+            if (pending.expiresAt <= now) {
+                this.toshlSignIns.delete(key);
+            }
+        }
+        if (this.toshlSignIns.size >= MAX_PENDING_TOSHL_SIGN_INS) {
+            const oldest = this.toshlSignIns.keys().next().value;
+            if (oldest !== undefined) {
+                this.toshlSignIns.delete(oldest);
+            }
+        }
+
+        const state = randomToken(32);
+        const browser = randomToken(32);
+        this.toshlSignIns.set(sha256(state), {
+            request,
+            clientName: client.clientName,
+            expiresAt: now + TOSHL_SIGN_IN_TTL_MS,
+            browser: sha256(browser),
+        });
+
+        res.writeHead(303, {
+            Location: toshl.client.authorizeRedirect(this.toshlRedirectUri(), state),
+            'Set-Cookie': `${SIGN_IN_COOKIE}=${browser}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${TOSHL_SIGN_IN_TTL_MS / 1000}`,
+            'Cache-Control': 'no-store',
+            'Referrer-Policy': 'no-referrer',
+        });
+        res.end();
+    }
+
+    private toshlRedirectUri(): string {
+        return `${this.issuer}/oauth/toshl/callback`;
+    }
+
+    /**
+     * Toshl sends the browser back here. The code is exchanged at once (Toshl codes live 30
+     * seconds), the user's tokens are stored, and Claude gets our own authorization code.
+     */
+    private async toshlCallback(req: IncomingMessage, res: ServerResponse) {
+        const toshl = this.toshl as Required<ToshlMode>;
+        const ip = this.clientIp(req);
+        if (!this.authorizeLimiter.allow(ip)) {
+            sendErrorPage(res, 429, 'Too many requests. Wait a minute and try again.');
+            return;
+        }
+
+        const url = new URL(req.url ?? '/', this.issuer);
+        const params = singleValued(url.searchParams);
+        const state = params?.get('state');
+        const pending = state ? this.toshlSignIns.get(sha256(state)) : undefined;
+
+        if (!params || !state || !pending || pending.expiresAt <= Date.now()) {
+            sendErrorPage(res, 400, 'This sign-in has expired. Go back to Claude and connect again.');
+            return;
+        }
+        // The browser check comes before the state is spent, so someone who learns a state
+        // value can't use it to break the real user's sign-in.
+        const cookie = readCookie(req, SIGN_IN_COOKIE);
+        if (cookie === undefined || sha256(cookie) !== pending.browser) {
+            logger.warn('Toshl sign-in returned to a different browser', { ip });
+            sendErrorPage(res, 400, 'This sign-in was started in another browser. Go back to Claude and connect again.');
+            return;
+        }
+        // Single use from here on, whatever happens next.
+        this.toshlSignIns.delete(sha256(state));
+        res.setHeader('Set-Cookie', `${SIGN_IN_COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`);
+
+        const { request } = pending;
+        const error = params.get('error');
+        if (error !== undefined) {
+            logger.info('Toshl sign-in declined', { error, clientId: request.clientId });
+            this.redirectWithParams(res, request.redirectUri, {
+                error: 'access_denied',
+                error_description: 'Access to Toshl was not granted',
+                state: request.state,
+            });
+            return;
+        }
+
+        const toshlCode = params.get('code');
+        if (!toshlCode) {
+            sendErrorPage(res, 400, 'Toshl did not send a sign-in code. Go back to Claude and connect again.');
+            return;
+        }
+
+        let userId: string;
+        try {
+            const tokens = await toshl.client.exchangeCode(toshlCode, this.toshlRedirectUri());
+            userId = await toshl.client.userId(tokens.accessToken);
+            await toshl.tokens.save(userId, tokens);
+        } catch (failure) {
+            logger.error('Toshl sign-in failed', {
+                message: failure instanceof Error ? failure.message : String(failure),
+                clientId: request.clientId,
+            });
+            sendErrorPage(res, 502, 'Signing in to Toshl failed. Go back to Claude and try connecting again.');
+            return;
+        }
+
+        const code = this.createCode({ ...request, sub: userId });
+        logger.info('Toshl sign-in approved', { clientId: request.clientId });
+        this.redirectWithParams(res, request.redirectUri, { code, state: request.state });
+    }
+
+    /**
+     * Personal-token mode: checks the pasted token against Toshl, stores it for the user it
+     * belongs to and hands Claude our code. Wrong tokens count towards the sign-in lockout.
+     */
+    private async personalTokenSignIn(
+        res: ServerResponse,
+        ip: string,
+        client: OAuthClient,
+        request: AuthorizationRequest,
+        pasted: string
+    ) {
+        const tokens = (this.toshl as ToshlMode).tokens;
+        const retryAfterSeconds = this.signInLimiter.retryAfterSeconds(ip);
+        if (retryAfterSeconds > 0) {
+            this.showSignIn(res, 429, client, request, { retryAfterSeconds }, { 'Retry-After': String(retryAfterSeconds) });
+            return;
+        }
+
+        const token = pasted.trim();
+        let userId: string;
+        try {
+            if (!/^[\x21-\x7e]{6,512}$/.test(token)) {
+                throw new InvalidPersonalTokenError('Not a token');
+            }
+            userId = await personalTokenUserId(token);
+        } catch (error) {
+            if (error instanceof InvalidPersonalTokenError) {
+                this.signInLimiter.recordFailure(ip);
+                logger.warn('Personal-token sign-in refused by Toshl', { clientId: client.clientId, ip });
+                await sleep(FAILED_SIGN_IN_DELAY_MS);
+                this.showSignIn(res, 401, client, request, {
+                    error: 'Toshl did not accept that token. Copy it again from developer.toshl.com/apps.',
+                    retryAfterSeconds: this.signInLimiter.retryAfterSeconds(ip),
+                });
+                return;
+            }
+            logger.error('Personal-token sign-in failed', { message: error instanceof Error ? error.message : String(error) });
+            this.showSignIn(res, 502, client, request, { error: 'Toshl could not be reached. Try again in a minute.' });
+            return;
+        }
+
+        this.signInLimiter.recordSuccess(ip);
+        const isNew = !tokens.has(userId);
+        await tokens.save(userId, personalTokenRecord(token));
+        // The interest signal: one line per connection, with how many people are connected.
+        logger.info('User connected with a personal token', { clientId: client.clientId, newUser: isNew, users: tokens.size });
+        const code = this.createCode({ ...request, sub: userId });
         this.redirectWithParams(res, request.redirectUri, { code, state: request.state });
     }
 
@@ -555,6 +857,11 @@ export class OAuthServer {
             redirectUri: request.redirectUri,
             loopback: client.loopback,
             formToken,
+            ...(this.toshl?.client
+                ? { toshlOrigin: new URL(this.toshl.client.authorizeRedirect(this.toshlRedirectUri(), 'x')).origin }
+                : this.toshl
+                  ? { personalToken: true }
+                  : {}),
             ...extra,
         });
     }
@@ -656,8 +963,14 @@ export class OAuthServer {
         }
 
         pending.usedFamilyId = randomToken(16);
+        const sub = pending.sub ?? OWNER;
         const { token: refreshToken } = await this.store.issue(
-            { clientId: pending.clientId, scope: pending.scope, resource: this.resource },
+            {
+                clientId: pending.clientId,
+                scope: pending.scope,
+                resource: this.resource,
+                ...(sub !== OWNER ? { sub } : {}),
+            },
             pending.usedFamilyId
         );
         if (pending.replayed) {
@@ -667,7 +980,7 @@ export class OAuthServer {
         }
 
         logger.info('OAuth tokens issued', { clientId: pending.clientId });
-        this.sendTokens(res, pending.clientId, pending.scope, refreshToken);
+        this.sendTokens(res, pending.clientId, pending.scope, refreshToken, sub);
     }
 
     private async exchangeRefreshToken(req: IncomingMessage, res: ServerResponse, params: Map<string, string>) {
@@ -697,16 +1010,29 @@ export class OAuthServer {
             return;
         }
 
-        this.sendTokens(res, result.grant.clientId, result.grant.scope, result.token);
+        const sub = result.grant.sub ?? OWNER;
+        if (this.toshl && (sub === OWNER || !this.toshl.tokens.has(sub))) {
+            // Disconnected from Toshl (or issued before multi-user mode): sign in again.
+            await this.store.revokeFamily(result.grant.familyId);
+            sendOAuthError(res, 400, 'invalid_grant', 'Connect to Toshl again');
+            return;
+        }
+        if (!this.toshl && sub !== OWNER) {
+            await this.store.revokeFamily(result.grant.familyId);
+            sendOAuthError(res, 400, 'invalid_grant', 'The refresh token was issued in another sign-in mode');
+            return;
+        }
+
+        this.sendTokens(res, result.grant.clientId, result.grant.scope, result.token, sub);
     }
 
-    private sendTokens(res: ServerResponse, clientId: string, scope: string, refreshToken: string) {
+    private sendTokens(res: ServerResponse, clientId: string, scope: string, refreshToken: string, sub: string) {
         const now = Math.floor(Date.now() / 1000);
         const accessToken = signPayload(this.accessKeys[0], {
             typ: 'access',
             iss: this.issuer,
             aud: this.resource,
-            sub: 'owner',
+            sub,
             client_id: clientId,
             scope,
             iat: now,
