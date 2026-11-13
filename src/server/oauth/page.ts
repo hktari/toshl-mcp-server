@@ -158,9 +158,10 @@ export function sendSignInPage(res: ServerResponse, status: number, options: Sig
         parts.push(`<p>Continue only if you started this from your own Claude.</p>
 <ol>
 <li>Open <a href="https://developer.toshl.com/apps/" target="_blank" rel="noopener noreferrer">developer.toshl.com/apps</a> and sign in with your Toshl account.</li>
-<li>Create a <strong>personal token</strong>. Toshl asks for your Toshl password to confirm.</li>
+<li>Under <strong>Create new personal token</strong>, type <code>claude.ai</code> as the description and your Toshl account password as the password, then click Create.</li>
 <li>Copy the token and paste it below.</li>
 </ol>
+<p class="hint">Signed up to Toshl with Google, Apple or Facebook? You have no Toshl password yet: set one first in <a href="https://toshl.com/app/#/user" target="_blank" rel="noopener noreferrer">your Toshl account settings</a>.</p>
 <form method="post" action="/oauth/authorize">
 <input type="hidden" name="request" value="${escapeHtml(options.formToken)}">
 <label for="toshl_token">Toshl personal token</label>
