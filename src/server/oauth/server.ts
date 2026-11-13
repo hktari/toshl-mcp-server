@@ -857,6 +857,7 @@ export class OAuthServer {
             redirectUri: request.redirectUri,
             loopback: client.loopback,
             formToken,
+            operator: this.config.operator,
             ...(this.toshl?.client
                 ? { toshlOrigin: new URL(this.toshl.client.authorizeRedirect(this.toshlRedirectUri(), 'x')).origin }
                 : this.toshl
