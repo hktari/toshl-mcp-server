@@ -12,8 +12,12 @@ export interface RequestUser {
     userId: string;
     /** The Authorization header for this user's Toshl requests, refreshing an OAuth token when needed. */
     getAuthorization: () => Promise<string>;
-    /** Toshl refused this user's credentials: forget them, so Claude asks the user to connect again. */
-    revoke: () => Promise<void>;
+    /**
+     * Toshl answered 401 to a request sent with `usedAuthorization`. Forgets the credentials only
+     * if they are still the ones that failed and are really dead, so Claude asks the user to
+     * connect again; a glitch or a request on credentials already replaced changes nothing.
+     */
+    revoke: (usedAuthorization: string) => Promise<void>;
 }
 
 const storage = new AsyncLocalStorage<RequestUser>();

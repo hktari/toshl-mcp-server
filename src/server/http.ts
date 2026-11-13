@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import logger from '../utils/logger.js';
 import { OAuthServer } from './oauth/server.js';
+import { RequestLimiter } from './oauth/rate-limit.js';
 import { createMcpServer } from './server.js';
 import { HttpTransportConfig } from './transport-config.js';
 import { enableMultiUserMode, RequestUser, runAsUser } from './request-context.js';
@@ -14,6 +15,15 @@ export const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 /** A session with no request for this long is closed; the client re-initializes on its next call. */
 export const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** Open sessions one user may hold; opening another closes their oldest. */
+export const MAX_SESSIONS_PER_USER = 10;
+
+/** Open sessions in total; past it, the least recently used one is closed. */
+export const MAX_SESSIONS = 1000;
+
+/** /mcp requests per user per minute in multi-user mode. */
+export const MCP_REQUESTS_PER_USER_PER_MINUTE = 240;
 
 const SESSION_SWEEP_INTERVAL_MS = 60 * 1000;
 
@@ -169,12 +179,15 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
         throw new Error('Refusing to serve /mcp without MCP_AUTH_TOKEN, OAuth, or MCP_ALLOW_NO_AUTH=true');
     }
 
-    const oauth = config.oauth ? await OAuthServer.create(config.oauth, config.trustProxy) : undefined;
+    const oauth = config.oauth
+        ? await OAuthServer.create(config.oauth, config.trustProxy, config.clientIpHeader)
+        : undefined;
     if (oauth?.multiUser) {
         enableMultiUserMode();
     }
 
     const sessions = new Map<string, Session>();
+    const userRequestLimiter = new RequestLimiter(MCP_REQUESTS_PER_USER_PER_MINUTE);
     const allowedHostnames = new Set([...LOOPBACK_HOSTNAMES, ...config.allowedHosts]);
     const allowedOrigins = new Set(config.allowedOrigins);
     const expectedDigest = config.authToken
@@ -195,6 +208,23 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
                 sessionId,
                 message: error instanceof Error ? error.message : String(error),
             });
+        }
+    };
+
+    /** Closes the oldest sessions past the per-user and overall caps, never the one just opened. */
+    const enforceSessionCaps = (keep: string, userId: string | undefined) => {
+        const byAge = (list: [string, Session][]) => list.sort((a, b) => a[1].lastSeen - b[1].lastSeen);
+        if (userId !== undefined) {
+            const mine = byAge([...sessions].filter(([id, s]) => s.userId === userId && id !== keep));
+            for (const [id] of mine.slice(0, Math.max(0, mine.length + 1 - MAX_SESSIONS_PER_USER))) {
+                void closeSession(id, 'per-user session cap');
+            }
+        }
+        if (sessions.size > MAX_SESSIONS) {
+            const others = byAge([...sessions].filter(([id]) => id !== keep));
+            for (const [id] of others.slice(0, sessions.size - MAX_SESSIONS)) {
+                void closeSession(id, 'session cap');
+            }
         }
     };
 
@@ -222,6 +252,11 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
                 sendJsonRpcError(res, 401, -32001, 'Unauthorized', { 'WWW-Authenticate': challenge });
                 return;
             }
+        }
+
+        if (user && !userRequestLimiter.allow(`user:${user.userId}`)) {
+            sendJsonRpcError(res, 429, -32000, 'Too many requests. Wait a minute and try again.', { 'Retry-After': '60' });
+            return;
         }
 
         const sessionHeader = req.headers['mcp-session-id'];
@@ -271,6 +306,7 @@ export async function startHttpServer(config: HttpTransportConfig): Promise<Runn
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (newSessionId) => {
                 sessions.set(newSessionId, { server, transport, lastSeen: Date.now(), userId: user?.userId });
+                enforceSessionCaps(newSessionId, user?.userId);
                 logger.info('MCP session opened', { sessionId: newSessionId, sessions: sessions.size });
             },
         });

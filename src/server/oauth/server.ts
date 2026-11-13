@@ -5,7 +5,7 @@ import { OAuthConfig } from '../transport-config.js';
 import { findClient, isRegisteredRedirectUri, OAuthClient } from './clients.js';
 import { deriveKey, randomToken, safeEqual, sha256, signPayload, verifyPayload } from './crypto.js';
 import { sendErrorPage, sendSignInPage } from './page.js';
-import { rateLimitKey, RequestLimiter, SignInLimiter } from './rate-limit.js';
+import { DEFAULT_LOCKOUT_POLICY, PERSONAL_TOKEN_LOCKOUT_POLICY, rateLimitKey, RequestLimiter, SignInLimiter } from './rate-limit.js';
 import { RefreshTokenStore } from './refresh-store.js';
 import {
     InvalidPersonalTokenError,
@@ -55,7 +55,13 @@ const MAX_PENDING_TOSHL_SIGN_INS = 1000;
 const OWNER = 'owner';
 
 const MAX_FORM_BYTES = 16 * 1024;
-const MAX_PENDING_CODES = 100;
+const MAX_PENDING_CODES = 1000;
+
+/** Sign-ins (refresh families) kept per user; older ones are revoked. */
+export const MAX_SIGN_INS_PER_USER = 20;
+
+/** Successful connections per user per minute, so one account can't churn codes and records. */
+const SIGN_INS_PER_USER_PER_MINUTE = 10;
 
 /** RFC 7636: 43-128 characters from the unreserved set. */
 const CODE_VERIFIER = /^[A-Za-z0-9\-._~]{43,128}$/;
@@ -225,16 +231,19 @@ export class OAuthServer {
     private readonly compareKey: Buffer;
     private readonly codes = new Map<string, PendingCode>();
     private readonly toshlSignIns = new Map<string, PendingToshlSignIn>();
-    private readonly signInLimiter = new SignInLimiter();
+    private readonly signInLimiter: SignInLimiter;
     private readonly tokenLimiter = new RequestLimiter(30);
     private readonly authorizeLimiter = new RequestLimiter(60);
+    private readonly userSignInLimiter = new RequestLimiter(SIGN_INS_PER_USER_PER_MINUTE);
 
     private constructor(
         private readonly config: OAuthConfig,
         private readonly trustProxy: boolean,
+        private readonly clientIpHeader: string | undefined,
         private readonly store: RefreshTokenStore,
         private readonly toshl?: ToshlMode
     ) {
+        this.signInLimiter = new SignInLimiter(config.personalTokens ? PERSONAL_TOKEN_LOCKOUT_POLICY : DEFAULT_LOCKOUT_POLICY);
         this.issuer = config.publicUrl;
         this.resource = `${config.publicUrl}/mcp`;
 
@@ -250,7 +259,7 @@ export class OAuthServer {
      * @param trustProxy Whether X-Forwarded-For carries the client IP
      * @returns The OAuth server
      */
-    static async create(config: OAuthConfig, trustProxy: boolean): Promise<OAuthServer> {
+    static async create(config: OAuthConfig, trustProxy: boolean, clientIpHeader?: string): Promise<OAuthServer> {
         const store = await RefreshTokenStore.open(config.stateDir);
         let toshl: ToshlMode | undefined;
         if (config.personalTokens) {
@@ -271,7 +280,7 @@ export class OAuthServer {
             signIn: config.personalTokens ? 'personal-token' : toshl ? 'toshl' : 'passphrase',
             storedRefreshTokens: store.size,
         });
-        return new OAuthServer(config, trustProxy, store, toshl);
+        return new OAuthServer(config, trustProxy, clientIpHeader, store, toshl);
     }
 
     /** Whether each user signs in with their own Toshl account (multi-user mode) */
@@ -292,10 +301,9 @@ export class OAuthServer {
         return {
             userId: sub,
             getAuthorization: () => tokens.authorization(sub),
-            revoke: async () => {
-                if (tokens.has(sub)) {
+            revoke: async (usedAuthorization: string) => {
+                if (await tokens.handleUnauthorized(sub, usedAuthorization)) {
                     logger.info('Toshl refused a user\'s credentials; disconnected them');
-                    await tokens.remove(sub);
                 }
             },
         };
@@ -457,13 +465,22 @@ export class OAuthServer {
     }
 
     /**
-     * Client address for rate limiting and logs. Behind a trusted proxy it's the last
-     * X-Forwarded-For entry, the one the proxy itself appended; anything that isn't an IP
-     * address falls back to the socket's. IPv6 is keyed by its /64.
+     * Client address for rate limiting and logs. Behind a trusted proxy it's the header the
+     * proxy overwrites with the client address (MCP_CLIENT_IP_HEADER, e.g. Railway's X-Real-IP),
+     * or else the last X-Forwarded-For entry. Behind Railway the last entry is one of Railway's
+     * own hops, which changes per request and makes every per-IP limit useless, so set the
+     * header there. Anything that isn't an IP falls back to the socket's. IPv6 is keyed by /48.
      * @param req HTTP request
      * @returns Rate-limit key
      */
     private clientIp(req: IncomingMessage): string {
+        if (this.trustProxy && this.clientIpHeader) {
+            const raw = req.headers[this.clientIpHeader];
+            const fromHeader = rateLimitKey(Array.isArray(raw) ? raw[0] : raw);
+            if (fromHeader) {
+                return fromHeader;
+            }
+        }
         if (this.trustProxy) {
             const header = req.headers['x-forwarded-for'];
             const value = Array.isArray(header) ? header[header.length - 1] : header;
@@ -804,7 +821,12 @@ export class OAuthServer {
         let userId: string;
         try {
             if (!/^[\x21-\x7e]{6,512}$/.test(token)) {
-                throw new InvalidPersonalTokenError('Not a token');
+                // Not counted as a failure: nothing was asked of Toshl, and counting junk
+                // would let anyone run up lockouts for free.
+                this.showSignIn(res, 400, client, request, {
+                    error: 'That doesn\'t look like a Toshl token. Copy it again from developer.toshl.com/apps.',
+                });
+                return;
             }
             userId = await personalTokenUserId(token);
         } catch (error) {
@@ -824,6 +846,10 @@ export class OAuthServer {
         }
 
         this.signInLimiter.recordSuccess(ip);
+        if (!this.userSignInLimiter.allow(`user:${userId}`)) {
+            this.showSignIn(res, 429, client, request, { error: 'Too many connections for this account. Wait a minute and try again.' });
+            return;
+        }
         const isNew = !tokens.has(userId);
         await tokens.save(userId, personalTokenRecord(token));
         // The interest signal: one line per connection, with how many people are connected.
@@ -890,7 +916,7 @@ export class OAuthServer {
             }
         }
         if (this.codes.size >= MAX_PENDING_CODES) {
-            // Only reachable with the passphrase; drop the oldest rather than grow.
+            // Bounded by the per-IP and per-user sign-in limits; drop the oldest rather than grow.
             const oldest = this.codes.keys().next().value;
             if (oldest !== undefined) {
                 this.codes.delete(oldest);
@@ -965,6 +991,9 @@ export class OAuthServer {
 
         pending.usedFamilyId = randomToken(16);
         const sub = pending.sub ?? OWNER;
+        if (sub !== OWNER) {
+            await this.store.trimFamilies(sub, MAX_SIGN_INS_PER_USER);
+        }
         const { token: refreshToken } = await this.store.issue(
             {
                 clientId: pending.clientId,

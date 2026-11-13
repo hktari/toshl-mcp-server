@@ -205,6 +205,29 @@ export class RefreshTokenStore {
      * Revokes every token in a family, e.g. after an authorization code is replayed
      * @param familyId Family to revoke
      */
+    /**
+     * Keeps at most `max` sign-ins (families) for one user, revoking the oldest, so one account
+     * signing in over and over can't grow the store without bound
+     * @param sub Toshl user id
+     * @param max Families to keep, counting one about to be issued
+     */
+    async trimFamilies(sub: string, max: number): Promise<number> {
+        const created = new Map<string, number>();
+        for (const record of this.records.values()) {
+            if (record.sub === sub) {
+                created.set(record.familyId, record.familyCreatedAt);
+            }
+        }
+        const excess = [...created].sort((a, b) => a[1] - b[1]).slice(0, Math.max(0, created.size - max + 1));
+        for (const [familyId] of excess) {
+            this.deleteFamily(familyId);
+        }
+        if (excess.length > 0) {
+            await this.persist();
+        }
+        return excess.length;
+    }
+
     async revokeFamily(familyId: string): Promise<void> {
         if (this.deleteFamily(familyId) > 0) {
             await this.persist();

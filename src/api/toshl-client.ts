@@ -66,6 +66,10 @@ export class ToshlApiClient {
                 config.headers = { ...config.headers, ...authHeaders };
                 // Remembered on the request so the response side caches under the same user.
                 (config as AxiosRequestConfig & { userId?: string }).userId = user?.userId;
+                // Which credentials this request used, so a 401 can't remove newer ones.
+                (config as AxiosRequestConfig & { usedAuthorization?: string }).usedAuthorization = user
+                    ? authHeaders.Authorization
+                    : undefined;
 
                 // Add If-None-Match header if we have a cached ETag
                 const cacheKey = scopedKey(requestCacheKey('etag', config.method, config.url, config.params), user?.userId);
@@ -104,8 +108,9 @@ export class ToshlApiClient {
                 // revoked (a deleted personal token, a withdrawn grant). Forget them; the next
                 // /mcp request gets the sign-in challenge.
                 const user = currentUser();
-                if (user && error.response?.status === 401) {
-                    await user.revoke().catch(() => undefined);
+                const used = (error.config as (AxiosRequestConfig & { usedAuthorization?: string }) | undefined)?.usedAuthorization;
+                if (user && used && error.response?.status === 401) {
+                    await user.revoke(used).catch(() => undefined);
                 }
 
                 // If 304 Not Modified, return cached data
