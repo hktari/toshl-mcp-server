@@ -22,6 +22,23 @@ function scopedKey(key: string, userId: string | undefined): string {
     return userId === undefined ? key : `user:${userId}:${key}`;
 }
 
+/** Statuses Toshl itself calls temporary (see docs/api/errors.md): another attempt may succeed. */
+const TRANSIENT_STATUS = new Set([502, 503, 504]);
+
+/**
+ * Per-attempt request timeout. Toshl answers /accounts and /entries in well under a second
+ * normally, but occasionally takes many seconds, and the whole tool call used to fail at the
+ * first ten. The budget here is one attempt plus one retry plus the pause between them, which
+ * has to stay inside the MCP client's own tool timeout.
+ */
+const DEFAULT_TIMEOUT_MS = 12000;
+
+/** Extra attempts for a request that is safe to repeat. */
+const DEFAULT_RETRIES = 1;
+
+/** Pause before the first retry; doubled for each further one. */
+const DEFAULT_RETRY_DELAY_MS = 500;
+
 /**
  * Base client for Toshl API
  */
@@ -29,6 +46,8 @@ export class ToshlApiClient {
     private client: AxiosInstance;
     private authProvider: AuthProvider;
     private baseUrl: string;
+    private retries: number;
+    private retryDelayMs: number;
 
     /**
      * Creates a new Toshl API client
@@ -38,10 +57,15 @@ export class ToshlApiClient {
     constructor(config: ApiClientConfig, authProvider: AuthProvider) {
         this.baseUrl = config.baseUrl;
         this.authProvider = authProvider;
+        // A malformed API_RETRIES / API_RETRY_DELAY_MS parses to NaN; the defaults stand.
+        this.retries = Number.isFinite(config.retries) ? Math.max(0, config.retries as number) : DEFAULT_RETRIES;
+        this.retryDelayMs = Number.isFinite(config.retryDelayMs)
+            ? Math.max(0, config.retryDelayMs as number)
+            : DEFAULT_RETRY_DELAY_MS;
 
         this.client = axios.create({
             baseURL: config.baseUrl,
-            timeout: config.timeout || 10000,
+            timeout: config.timeout || DEFAULT_TIMEOUT_MS,
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
@@ -146,6 +170,58 @@ export class ToshlApiClient {
     }
 
     /**
+     * Whether a failed request is worth sending again: Toshl called it temporary, or it
+     * produced no response at all (a timeout, a reset, a DNS failure), meaning nothing
+     * reached Toshl or nothing came back.
+     * @param error The error axios rejected with
+     * @returns true when another attempt may succeed
+     */
+    private isTransient(error: any): boolean {
+        const status = error?.response?.status;
+        if (status !== undefined) {
+            return TRANSIENT_STATUS.has(status);
+        }
+        return Boolean(error?.request);
+    }
+
+    /**
+     * Sends a request and, when it is safe to repeat, gives a transient failure another attempt.
+     *
+     * Only reads are repeated. A write that Toshl never answered may still have been applied,
+     * so repeating it could duplicate an entry; those are reported instead, by handleApiError.
+     *
+     * @param repeatable Whether sending the same request twice is harmless
+     * @param send Sends one attempt
+     * @returns API response
+     */
+    private async send<T>(repeatable: boolean, send: () => Promise<AxiosResponse>): Promise<ApiResponse<T>> {
+        const allowed = repeatable ? this.retries + 1 : 1;
+
+        for (let attempt = 1; ; attempt++) {
+            try {
+                const response = await send();
+
+                return {
+                    data: response.data,
+                    status: response.status,
+                    headers: response.headers as Record<string, string>
+                };
+            } catch (error) {
+                if (attempt < allowed && this.isTransient(error)) {
+                    const pause = this.retryDelayMs * 2 ** (attempt - 1);
+                    logger.debug('Retrying a Toshl request', { attempt, pause });
+                    if (pause > 0) {
+                        await new Promise((resolve) => setTimeout(resolve, pause));
+                    }
+                    continue;
+                }
+
+                handleApiError(error, { attempts: attempt });
+            }
+        }
+    }
+
+    /**
      * Makes a GET request to the Toshl API
      * @param path API path
      * @param params Query parameters
@@ -153,22 +229,7 @@ export class ToshlApiClient {
      * @returns API response
      */
     async get<T>(path: string, params?: Record<string, any>, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        try {
-            const response: AxiosResponse = await this.client.get(path, {
-                ...config,
-                params
-            });
-
-            return {
-                data: response.data,
-                status: response.status,
-                headers: response.headers as Record<string, string>
-            };
-        } catch (error) {
-            handleApiError(error);
-            // This line will never be reached due to handleApiError throwing an error
-            throw error;
-        }
+        return this.send<T>(true, () => this.client.get(path, { ...config, params }));
     }
 
     /**
@@ -180,22 +241,7 @@ export class ToshlApiClient {
      * @returns API response
      */
     async post<T>(path: string, data: any, params?: Record<string, any>, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        try {
-            const response: AxiosResponse = await this.client.post(path, data, {
-                ...config,
-                params
-            });
-
-            return {
-                data: response.data,
-                status: response.status,
-                headers: response.headers as Record<string, string>
-            };
-        } catch (error) {
-            handleApiError(error);
-            // This line will never be reached due to handleApiError throwing an error
-            throw error;
-        }
+        return this.send<T>(false, () => this.client.post(path, data, { ...config, params }));
     }
 
     /**
@@ -207,22 +253,7 @@ export class ToshlApiClient {
      * @returns API response
      */
     async put<T>(path: string, data: any, params?: Record<string, any>, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        try {
-            const response: AxiosResponse = await this.client.put(path, data, {
-                ...config,
-                params
-            });
-
-            return {
-                data: response.data,
-                status: response.status,
-                headers: response.headers as Record<string, string>
-            };
-        } catch (error) {
-            handleApiError(error);
-            // This line will never be reached due to handleApiError throwing an error
-            throw error;
-        }
+        return this.send<T>(false, () => this.client.put(path, data, { ...config, params }));
     }
 
     /**
@@ -233,22 +264,7 @@ export class ToshlApiClient {
      * @returns API response
      */
     async delete<T>(path: string, params?: Record<string, any>, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        try {
-            const response: AxiosResponse = await this.client.delete(path, {
-                ...config,
-                params
-            });
-
-            return {
-                data: response.data,
-                status: response.status,
-                headers: response.headers as Record<string, string>
-            };
-        } catch (error) {
-            handleApiError(error);
-            // This line will never be reached due to handleApiError throwing an error
-            throw error;
-        }
+        return this.send<T>(false, () => this.client.delete(path, { ...config, params }));
     }
 
     /**
@@ -278,7 +294,9 @@ export function createToshlApiClient(): ToshlApiClient {
     const config: ApiClientConfig = {
         baseUrl,
         token: process.env.TOSHL_API_TOKEN || '',
-        timeout: parseInt(process.env.API_TIMEOUT || '10000', 10)
+        timeout: parseInt(process.env.API_TIMEOUT || String(DEFAULT_TIMEOUT_MS), 10),
+        retries: parseInt(process.env.API_RETRIES || String(DEFAULT_RETRIES), 10),
+        retryDelayMs: parseInt(process.env.API_RETRY_DELAY_MS || String(DEFAULT_RETRY_DELAY_MS), 10)
     };
 
     const authProvider = createAuthProvider();

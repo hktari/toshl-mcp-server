@@ -1,4 +1,5 @@
 import { ToshlApiClient } from '../toshl-client.js';
+import { readBackCreated } from '../../utils/created-resource.js';
 import { ToshlEntry, ToshlEntryPage, ToshlEntrySum, ToshlTimelineItem } from '../../utils/types.js';
 import { parseNextPage } from '../../utils/pagination.js';
 import { assertResourceId } from '../../utils/resource-id.js';
@@ -77,7 +78,7 @@ export class EntriesClient {
             logger.debug('Response', { status: response.status });
             throw new Error('Invalid response. Expected location header to contain entry ID');
         }
-        return await this.getEntry(id);
+        return await readBackCreated('entry', id, () => this.getEntry(id));
     }
 
     /**

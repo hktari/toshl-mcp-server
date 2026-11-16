@@ -188,7 +188,12 @@ export interface ToshlTimelineItem {
 export interface ApiClientConfig {
     baseUrl: string;
     token: string;
+    /** Per-attempt request timeout in milliseconds */
     timeout?: number;
+    /** Extra attempts for a request that never reached Toshl, or that Toshl called temporary */
+    retries?: number;
+    /** Pause before the first retry in milliseconds; doubles for each further one */
+    retryDelayMs?: number;
 }
 
 export interface ApiResponse<T> {
@@ -203,6 +208,10 @@ export interface ApiError {
     /** Toshl's error identifier, e.g. `input_error` (see docs/api/errors.md) */
     id?: string;
     details?: any;
+    /** HTTP method of the failed request, lower-case; a write is reported differently from a read */
+    method?: string;
+    /** Seconds Toshl asked the caller to wait, from the Retry-After header of a 429 */
+    retryAfterSeconds?: number;
 }
 
 // Cache Types

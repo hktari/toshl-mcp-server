@@ -1,4 +1,5 @@
 import { ToshlApiClient } from '../toshl-client.js';
+import { readBackCreated } from '../../utils/created-resource.js';
 import { ToshlTag, ToshlTagPage } from '../../utils/types.js';
 import { parseNextPage } from '../../utils/pagination.js';
 import { assertResourceId } from '../../utils/resource-id.js';
@@ -117,7 +118,7 @@ export class TagsClient {
             throw new Error('Invalid response. Expected location header to contain tag ID');
         }
 
-        return await this.getTag(id);
+        return await readBackCreated('tag', id, () => this.getTag(id));
     }
 
     /**
