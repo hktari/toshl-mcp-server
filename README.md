@@ -373,6 +373,12 @@ The server can be configured using environment variables:
 - `CACHE_TTL`: Time to live for cached data in seconds (default: 3600)
 - `CACHE_ENABLED`: Whether caching is enabled (default: true)
 - `LOG_LEVEL`: Logging level (default: info)
+- `API_TIMEOUT`: How long one attempt at a Toshl request may take, in milliseconds (default: 12000)
+- `API_RETRIES`: Extra attempts for a read that timed out or that Toshl answered 502/503/504
+  (default: 1). Writes are never repeated: one that Toshl did not answer may still have been
+  applied, so it is reported instead. Keep `API_TIMEOUT × (API_RETRIES + 1)` inside your MCP
+  client's tool timeout.
+- `API_RETRY_DELAY_MS`: Pause before the first retry, doubled for each further one (default: 500)
 - `MCP_TRANSPORT`, `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOW_NO_AUTH`,
   `MCP_ALLOWED_HOSTS`, `MCP_ALLOWED_ORIGINS`:
   see [Remote use (Streamable HTTP)](#remote-use-streamable-http)

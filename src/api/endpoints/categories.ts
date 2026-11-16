@@ -1,4 +1,5 @@
 import { ToshlApiClient } from '../toshl-client.js';
+import { readBackCreated } from '../../utils/created-resource.js';
 import { ToshlCategory } from '../../utils/types.js';
 import { assertResourceId } from '../../utils/resource-id.js';
 import logger from '../../utils/logger.js';
@@ -87,7 +88,7 @@ export class CategoriesClient {
             throw new Error('Invalid response. Expected location header to contain category ID');
         }
 
-        return await this.getCategory(id);
+        return await readBackCreated('category', id, () => this.getCategory(id));
     }
 
     /**
